@@ -1,9 +1,36 @@
+# Build directories
 build/
+out/
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Object files & archives
 *.o
 *.a
 *.so
+*.dylib
+*.dSYM/
+
+# Binaries
 plusafetch
+plusafetch-test
+
+# IDE / editor
 .vscode/
+.idea/
 .cache/
-.DS_Store
+*.swp
+*.swo
 *~
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Core dumps
+core
+core.*
