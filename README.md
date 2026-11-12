@@ -101,7 +101,7 @@ JSONC with comments (stripped before strict parsing). `$XDG_CONFIG_HOME` is hono
 | CPU | `/proc/cpuinfo` (`model name`/`Hardware`/`Processor` + core count) | `N/A` |
 | Memory | `/proc/meminfo` (`MemTotal`/`MemAvailable`) | `N/A` |
 | Disk | Android: `statvfs("/data")` · Linux: `statvfs("/")` | `N/A` |
-| Uptime | `/proc/uptime` (Linux); **Android unrooted: N/A** (SELinux denies `/proc/uptime`) | `N/A` |
+| Uptime | `CLOCK_BOOTTIME` (kernel boot time incl. suspend — works unrooted); falls back to `/proc/uptime` | `N/A` |
 | Packages | dpkg `status` paragraphs / `rpm -qa` | `N/A` |
 | Shell/Terminal/Locale/DateTime | env / `std::time` | `N/A` |
 | Battery | `/sys/class/power_supply/*` (Linux/Android, fast); `termux-battery-status` (Android fallback) | `N/A` |

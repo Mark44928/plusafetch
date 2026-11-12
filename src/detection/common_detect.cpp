@@ -108,39 +108,31 @@ void detectKernel(FFContext& ctx) {
 }
 
 // ---- Uptime ----
+// Primary: CLOCK_BOOTTIME — time since boot incl. suspend. Works unrooted
+// (SELinux denies /proc/uptime on Termux; AndroidSystemClock equivalent).
+// Fallback: /proc/uptime (Linux).
 void detectUptime(FFContext& ctx) {
-    auto up = readTextFile("/proc/uptime");
-    if (up) {
-        double secs = std::strtod(up->c_str(), nullptr);
-        if (secs > 0 || up->size() > 2) {
-            uint64_t s = static_cast<uint64_t>(secs);
-            uint64_t d = s / 86400, h = (s % 86400) / 3600, m = (s % 3600) / 60;
-            char out[128];
-            if (d) std::snprintf(out, sizeof out, "%llud %lluh %llum", (unsigned long long)d, (unsigned long long)h, (unsigned long long)m);
-            else if (h) std::snprintf(out, sizeof out, "%lluh %llum", (unsigned long long)h, (unsigned long long)m);
-            else std::snprintf(out, sizeof out, "%llum %llus", (unsigned long long)m, (unsigned long long)(s % 60));
-            ctx.uptimeLine = std::string{out};
-            return;
-        }
-    }
-#ifdef __ANDROID__
-    // ro.runtime.firstboot is empty on many devices; treat as N/A then.
-    std::string first = androidProp("ro.runtime.firstboot");
-    if (!first.empty()) {
-        uint64_t boot = std::strtoull(first.c_str(), nullptr, 10);
-        if (boot > 0 && first.size() >= 12) {
-            using namespace std::chrono;
-            auto ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-            uint64_t secs = (uint64_t)ms / 1000 > boot / 1000 ? ((uint64_t)ms - boot) / 1000 : 0;
-            uint64_t d = secs / 86400, h = (secs % 86400) / 3600, m = (secs % 3600) / 60;
-            char out[128];
-            std::snprintf(out, sizeof out, "%llud %lluh %llum", (unsigned long long)d, (unsigned long long)h, (unsigned long long)m);
-            ctx.uptimeLine = std::string{out};
-            return;
-        }
-    }
+    struct timespec ts{};
+#if defined(__ANDROID__) || defined(__linux__) || defined(__FreeBSD__)
+    const clockid_t cid = CLOCK_BOOTTIME;
+#else
+    const clockid_t cid = CLOCK_MONOTONIC;
 #endif
-    ctx.uptimeLine = std::unexpected(Error{"uptime unavailable on this platform"});
+    double secs = 0;
+    bool have = false;
+    if (clock_gettime(cid, &ts) == 0 && ts.tv_sec > 0) { secs = (double)ts.tv_sec; have = true; }
+    else {
+        auto up = readTextFile("/proc/uptime");
+        if (up) { secs = std::strtod(up->c_str(), nullptr); have = true; }
+    }
+    if (!have) { ctx.uptimeLine = std::unexpected(Error{"uptime unavailable"}); return; }
+    uint64_t s = (uint64_t)secs;
+    uint64_t d = s / 86400, h = (s % 86400) / 3600, m = (s % 3600) / 60;
+    char out[128];
+    if (d) std::snprintf(out, sizeof out, "%llud %lluh %llum", (unsigned long long)d, (unsigned long long)h, (unsigned long long)m);
+    else if (h) std::snprintf(out, sizeof out, "%lluh %llum", (unsigned long long)h, (unsigned long long)m);
+    else std::snprintf(out, sizeof out, "%llum %llus", (unsigned long long)m, (unsigned long long)(s % 60));
+    ctx.uptimeLine = std::string{out};
 }
 
 // ---- Shell ----
