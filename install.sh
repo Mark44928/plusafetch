@@ -23,12 +23,20 @@ else
   fi
 fi
 
+IS_TERMUX=0
+if [ -n "${TERMUX_VERSION:-}" ] || [ "${PREFIX:-}" = "/data/data/com.termux/files/usr" ]; then IS_TERMUX=1; fi
+
 info "Configuring…"
-cmake -B build -DCMAKE_BUILD_TYPE=Release .
+if [ "$IS_TERMUX" = "1" ]; then
+  # Never /usr/local on Termux — install into $PREFIX (no admin rights exist there).
+  cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" .
+else
+  cmake -B build -DCMAKE_BUILD_TYPE=Release .
+fi
 info "Building…"
 cmake --build build -j2
 info "Installing…"
-if [ -n "${TERMUX_VERSION:-}" ] || [ "${PREFIX:-}" = "/data/data/com.termux/files/usr" ]; then
+if [ "$IS_TERMUX" = "1" ]; then
   cmake --install build
 elif [ "$(id -u)" = "0" ]; then
   cmake --install build
