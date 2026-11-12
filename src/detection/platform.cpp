@@ -57,8 +57,12 @@ Result<std::string> readFirstLine(std::string_view path) {
 
 Result<std::string> execCapture(const char* const argv[], std::size_t maxBytes) {
     int pipefd[2];
-    if (::pipe2(pipefd, O_CLOEXEC) != 0)
-        return std::unexpected(errCtx("pipe2 failed", errno));
+    if (::pipe(pipefd) != 0)
+        return std::unexpected(errCtx("pipe failed", errno));
+    for (int fd : pipefd) {
+        int fl = ::fcntl(fd, F_GETFD);
+        if (fl >= 0) ::fcntl(fd, F_SETFD, fl | FD_CLOEXEC);
+    }
 
     pid_t pid = ::fork();
     if (pid < 0) {

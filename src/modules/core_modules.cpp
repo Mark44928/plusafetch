@@ -250,10 +250,10 @@ static void detectBrightnessModule(FFContext& ctx) {
         (void)guess;
     } else {
         uint64_t maxv = std::strtoull(dev->c_str(), nullptr, 10);
-        uint64_t cur = std::strtoull(cur->c_str(), nullptr, 10);
+        uint64_t curv = std::strtoull(cur->c_str(), nullptr, 10);
         if (maxv) {
             char out[32];
-            std::snprintf(out, sizeof out, "%llu%%", (unsigned long long)(cur * 100 / maxv));
+            std::snprintf(out, sizeof out, "%llu%%", (unsigned long long)(curv * 100 / maxv));
             ctx.brightnessLine = std::string{out};
         }
     }
