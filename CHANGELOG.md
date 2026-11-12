@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.2] - 2026-11-12
+
+### Fixed
+- Uptime works on unrooted Android: `CLOCK_BOOTTIME` (kernel boot time incl. suspend, equivalent of `SystemClock.elapsedRealtime()`) replaces SELinux-denied `/proc/uptime`; `/proc/uptime` kept as fallback. Earlier `ro.runtime.firstboot` path removed (measured empty on-device).
+
 ## [0.1.1] - 2026-11-12
 
 ### Fixed

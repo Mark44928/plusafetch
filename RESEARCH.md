@@ -132,6 +132,7 @@ Adaptation for Plusafetch: one error type, `using Error = std::string` (message 
 
 ## 5. Explicit non-goals & honesty register
 
+1. **Uptime alternative (verified):** `/proc/uptime` and `/proc/stat` return SELinux "Permission denied" unrooted here, but `CLOCK_BOOTTIME` — kernel boot time incl. suspend, equivalent of `SystemClock.elapsedRealtime()` — returns real elapsed seconds unrooted. Used as the primary uptime source; `/proc/uptime` kept as fallback.
 1. **< 15 ms on Helio P22 is not achievable if Termux-API subprocesses (termux-battery-status etc.) are on the critical path** — each forks Java through Termux:API's socket, 100–400 ms each. Plusafetch reads sysfs first (fastfetch-style, ~1–3 ms) and only falls back to termux-api subprocesses. Default layout contains **no** subprocess; sensors/telephony/wifi/clipboard/command are behind flags. Measured wall time on this device may exceed 15 ms for `--all`; that is reported, not hidden.
 2. **Brightness read: impossible unrooted** (see 3.5) → `N/A`, honestly.
 3. **`device_id`/`sim_serial_number`/`sim_subscriber_id`:** always N/A on modern unrooted Android (restricted); we never print their values anyway (privacy).
