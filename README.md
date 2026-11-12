@@ -4,7 +4,7 @@ A modular **C++23** system fetch tool for **Termux (Android, unrooted)** with a 
 Fastfetch-style module registry, zero-allocation string buffers, parallel detection, single-write output.
 **No logo. Ever.** Text and data only.
 
-> Status: v0.2.0 · text-only · MIT
+> Status: v0.1.0 · text-only · MIT
 
 Example output (Android 12 via Termux on MediaTek Helio P22):
 

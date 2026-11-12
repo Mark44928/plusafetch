@@ -28,7 +28,7 @@ namespace {
 
 using namespace plf;
 
-constexpr const char* kVersion = "0.2.0";
+constexpr const char* kVersion = "0.1.0";
 constexpr const char* kName    = "plusafetch";
 
 // Default layout: fast — only syscalls/file reads, no subprocesses.
