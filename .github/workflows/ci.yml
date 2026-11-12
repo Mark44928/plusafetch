@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: ${{matrix.name}}
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: ubuntu-clang,   os: ubuntu-latest, compiler: clang++, extra: "-std=c++23" }
+          - { name: ubuntu-gcc,     os: ubuntu-latest, compiler: g++,     extra: "-std=c++23" }
+          - { name: macos-appleclang, os: macos-latest, compiler: clang++, extra: "-std=c++23" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y cmake clang g++ >/dev/null || true
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{matrix.compiler}} -DCMAKE_CXX_FLAGS="${{matrix.extra}}" .
+      - name: Build
+        run: cmake --build build -j2
+      - name: Smoke
+        run: |
+          ./build/plusafetch --list-modules
+          ./build/plusafetch --json
+          ./build/plusafetch --format '{os} {cpu}' >/dev/null
+          ./build/plusafetch --help >/dev/null
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy clang cmake
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON .
+      - name: clang-tidy (non-blocking report)
+        run: |
+          clang-tidy -p build src/*.cpp src/*/*.cpp --warnings-as-errors='' || true
