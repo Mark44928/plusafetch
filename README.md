@@ -100,7 +100,7 @@ JSONC with comments (stripped before strict parsing). `$XDG_CONFIG_HOME` is hono
 | Kernel | `uname()` | `N/A` |
 | CPU | `/proc/cpuinfo` (`model name`/`Hardware`/`Processor` + core count) | `N/A` |
 | Memory | `/proc/meminfo` (`MemTotal`/`MemAvailable`) | `N/A` |
-| Disk | `statvfs("/")` | `N/A` |
+| Disk | Android: `statvfs("/data")` · Linux: `statvfs("/")` | `N/A` |
 | Uptime | `/proc/uptime` (Linux); **Android unrooted: N/A** (SELinux denies `/proc/uptime`) | `N/A` |
 | Packages | dpkg `status` paragraphs / `rpm -qa` | `N/A` |
 | Shell/Terminal/Locale/DateTime | env / `std::time` | `N/A` |

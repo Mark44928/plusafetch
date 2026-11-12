@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.1] - 2026-11-12
+
+### Fixed
+- Disk module on Android now reports the real user-storage partition (`/data`, e.g. 50 GB) instead of the tiny read-only root system partition.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added

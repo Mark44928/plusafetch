@@ -78,11 +78,18 @@ void detectMemory(FFContext& ctx) {
     ctx.memLine = std::string{out};
 }
 
-// ---- Disk (root filesystem) ----
+// ---- Disk ----
+// Android: / is a tiny read-only system partition ("just android system stuff");
+// the user's storage lives on /data. Linux keeps /.
 void detectDisk(FFContext& ctx) {
     struct statvfs st{};
-    if (statvfs("/", &st) != 0 || st.f_blocks == 0) {
-        ctx.diskLine = std::unexpected(Error{"statvfs(/) failed"});
+#if defined(__ANDROID__)
+    const char* diskTarget = "/data";
+#else
+    const char* diskTarget = "/";
+#endif
+    if (statvfs(diskTarget, &st) != 0 || st.f_blocks == 0) {
+        ctx.diskLine = std::unexpected(Error{std::string("statvfs(") + diskTarget + ") failed"});
         return;
     }
     uint64_t total = static_cast<uint64_t>(st.f_blocks) * st.f_frsize;
