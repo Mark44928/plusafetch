@@ -5,6 +5,7 @@
 #include "detection/platform.hpp"
 #include <cctype>
 #include <cstring>
+#include <cstdio>
 #include <algorithm>
 
 namespace plf {
@@ -14,6 +15,40 @@ void initOptionsDefault(void*) noexcept {}
 void destroyOptionsDefault(void*) noexcept {}
 
 // In this registry, `options` IS the module's own FFModuleBaseInfo* (set by main).
+// Shared key/value line renderer: honors hideKeys, key renames, keyColor,
+// boldKeys, and strips control bytes from the key (they could forge escapes).
+void printKeyLine(FFContext& ctx, const std::string& rawKey, const std::string& value) noexcept {
+    std::string key = sanitizeForTerminal(rawKey);
+    if (ctx.hideKeys) {
+        ffStrbufAppendS(ctx.frame.b, sanitizeForTerminal(value).c_str());
+        ffStrbufAppendC(ctx.frame.b, '\n');
+        return;
+    }
+    char esc[48];
+    const char* keyCol = "";
+    const char* reset  = "";
+    if (ctx.color) {
+        reset = "\033[0m";
+        if (ctx.keyColorSet) {
+            if (ctx.boldKeys)
+                std::snprintf(esc, sizeof esc, "\033[1;38;2;%u;%u;%um", (unsigned)ctx.keyColorR, (unsigned)ctx.keyColorG, (unsigned)ctx.keyColorB);
+            else
+                std::snprintf(esc, sizeof esc, "\033[38;2;%u;%u;%um", (unsigned)ctx.keyColorR, (unsigned)ctx.keyColorG, (unsigned)ctx.keyColorB);
+            keyCol = esc;
+        } else if (ctx.boldKeys) {
+            keyCol = ctx.truecolor ? "\033[1;38;2;120;180;255m" : "\033[1;36m";
+        } else {
+            keyCol = ctx.truecolor ? "\033[38;2;120;180;255m" : "\033[36m";
+        }
+    }
+    ffStrbufAppendS(ctx.frame.b, keyCol);
+    ffStrbufAppendS(ctx.frame.b, key.c_str());
+    ffStrbufAppendS(ctx.frame.b, reset);
+    ffStrbufAppendS(ctx.frame.b, ": ");
+    ffStrbufAppendS(ctx.frame.b, sanitizeForTerminal(value).c_str());
+    ffStrbufAppendC(ctx.frame.b, '\n');
+}
+
 void printModuleDefault(void* options) noexcept {
     const auto* self = static_cast<const FFModuleBaseInfo*>(options);
     FFContext& ctx = *g_ctx;
@@ -25,18 +60,9 @@ void printModuleDefault(void* options) noexcept {
     std::string value = v ? std::move(*v) : "N/A";
     std::string key{self->displayName ? self->displayName : self->name};
     if (!self->displayName && !key.empty()) key[0] = (char)std::toupper((unsigned char)key[0]);
-    const char* keyCol = "";
-    const char* reset  = "";
-    if (ctx.color) {
-        keyCol = ctx.truecolor ? "\033[38;2;120;180;255m" : "\033[36m";
-        reset  = "\033[0m";
-    }
-    ffStrbufAppendS(ctx.frame.b, keyCol);
-    ffStrbufAppendS(ctx.frame.b, key.c_str());
-    ffStrbufAppendS(ctx.frame.b, reset);
-    ffStrbufAppendS(ctx.frame.b, ": ");
-    ffStrbufAppendS(ctx.frame.b, value.c_str());
-    ffStrbufAppendC(ctx.frame.b, '\n');
+    auto rename = ctx.keyRenames.find(self->name);
+    if (rename != ctx.keyRenames.end() && !rename->second.empty()) key = rename->second;
+    printKeyLine(ctx, key, value);
 }
 
 bool jsonResultDefault(void* options, nlohmann::json& out) noexcept {
@@ -144,6 +170,25 @@ void renderModuleLine(FFContext& ctx, const FFModuleBaseInfo& info) {
     printModuleDefault(const_cast<FFModuleBaseInfo*>(&info));
 }
 
+// Saturating parse for {name~a,b} slice bounds: no UB on overflow, clamps
+// to [0, 2^20]. Negative-looking values parse as huge and clamp.
+static int parseSliceBound(std::string_view s) {
+    std::size_t i = 0;
+    while (i < s.size() && std::isspace((unsigned char)s[i])) ++i;
+    bool neg = i < s.size() && s[i] == '-';
+    if (neg) ++i;
+    long long acc = 0;
+    bool any = false;
+    for (; i < s.size() && std::isdigit((unsigned char)s[i]); ++i) {
+        any = true;
+        acc = acc * 10 + (s[i] - '0');
+        if (acc > (1LL << 20)) acc = 1LL << 20; // saturate; stop caring about exact value
+    }
+    if (!any) return 0;
+    if (neg) return 0; // slices are clamped at the front; negative bounds mean 0
+    return (int)acc;
+}
+
 // --format renderer: {module} and {module~start,len} placeholders.
 // Unknown or failed placeholders vanish. `{cpu}` (exact name) resolves via findModule.
 std::string renderFormatTemplate(FFContext& ctx, std::string_view tmpl) {
@@ -164,8 +209,8 @@ std::string renderFormatTemplate(FFContext& ctx, std::string_view tmpl) {
             nm = spec.substr(0, tilde);
             std::string_view rest = spec.substr(tilde + 1);
             const std::size_t comma = rest.find(',');
-            begin = std::atoi(std::string{rest.substr(0, comma)}.c_str());
-            len = (comma == std::string_view::npos) ? -1 : std::atoi(std::string{rest.substr(comma + 1)}.c_str());
+            begin = parseSliceBound(rest.substr(0, comma));
+            len = (comma == std::string_view::npos) ? -1 : parseSliceBound(rest.substr(comma + 1));
         }
         if (!nm.empty()) {
             if (const FFModuleBaseInfo* m = findModule(nm)) {
@@ -174,7 +219,7 @@ std::string renderFormatTemplate(FFContext& ctx, std::string_view tmpl) {
                         std::string_view val{*v};
                         if (begin > 0) val = val.substr(std::min(static_cast<std::size_t>(begin), val.size()));
                         if (len >= 0 && static_cast<std::size_t>(len) < val.size()) val = val.substr(0, static_cast<std::size_t>(len));
-                        out.append(val);
+                        out.append(sanitizeForTerminal(val));
                     }
                 }
             }

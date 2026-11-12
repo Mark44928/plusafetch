@@ -3,6 +3,7 @@
 // fan-out (each detector writes only its own disjoint fields), consumed by
 // the render phase (single-threaded). Never throws.
 #include <chrono>
+#include <unordered_map>
 #include "../core/ffstrbuf.hpp"
 #include "../core/error.hpp"
 
@@ -47,6 +48,14 @@ struct FFContext {
     // Config (from $HOME/.config/plusafetch/config.jsonc)
     std::string configCommand;    // "" => Command module shows N/A
     std::string configCommandKey{"Command"};
+
+    // Customization (config "keyColor" / "boldKeys" / "hideKeys" / "separatorLength")
+    unsigned char keyColorR = 120, keyColorG = 180, keyColorB = 255;
+    bool keyColorSet = false;
+    bool boldKeys    = false;
+    bool hideKeys    = false;
+    int  separatorLength = 14;                     // '─' count for the Separator module
+    std::unordered_map<std::string, std::string> keyRenames; // module name -> custom key
 
     // Host pieces (computed once, reused by title/host/linuxgpu)
     std::string userName;

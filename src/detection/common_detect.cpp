@@ -6,8 +6,8 @@
 #include <sys/statvfs.h>
 #include <ctime>
 #include <cstdio>
-#include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <algorithm>
 
 namespace plf {
@@ -69,7 +69,10 @@ void detectMemory(FFContext& ctx) {
         return std::strtoull(mem->substr(end, stop - end).c_str(), nullptr, 10);
     };
     uint64_t total = fieldKiB("MemTotal:");
-    uint64_t avail = fieldKiB("MemAvailable:");
+    // MemAvailable is absent on kernels < 3.14; fall back to MemFree rather
+    // than reporting all of RAM as used. Presence is checked explicitly so a
+    // genuine 0 KiB available reading is not mistaken for "missing".
+    uint64_t avail = mem->find("MemAvailable:") != std::string::npos ? fieldKiB("MemAvailable:") : fieldKiB("MemFree:");
     if (total == 0) { ctx.memLine = std::unexpected(Error{"MemTotal missing"}); return; }
     uint64_t used = avail < total ? total - avail : 0;
     char out[160];
@@ -92,8 +95,9 @@ void detectDisk(FFContext& ctx) {
         ctx.diskLine = std::unexpected(Error{std::string("statvfs(") + diskTarget + ") failed"});
         return;
     }
-    uint64_t total = static_cast<uint64_t>(st.f_blocks) * st.f_frsize;
-    uint64_t free  = static_cast<uint64_t>(st.f_bfree)  * st.f_frsize;
+    uint64_t bs = st.f_frsize ? st.f_frsize : st.f_bsize; // f_frsize may be 0 on some filesystems
+    uint64_t total = static_cast<uint64_t>(st.f_blocks) * bs;
+    uint64_t free  = static_cast<uint64_t>(st.f_bfree)  * bs;
     uint64_t used  = total > free ? total - free : 0;
     char out[160];
     std::snprintf(out, sizeof out, "%.1f GiB used / %.1f GiB", used / 1073741824.0, total / 1073741824.0);
@@ -164,8 +168,9 @@ void detectLocale(FFContext& ctx) {
 // ---- DateTime ----
 void detectDateTime(FFContext& ctx) {
     std::time_t now = std::time(nullptr);
-    std::tm tmBuf{};
-    if (std::tm* tm_ptr = std::localtime(&now)) tmBuf = *tm_ptr;
+    const std::tm* tmPtr = std::localtime(&now);
+    if (!tmPtr) { ctx.dateTimeLine = std::unexpected(Error{"localtime failed"}); return; }
+    std::tm tmBuf = *tmPtr;
     char out[128];
     if (std::strftime(out, sizeof out, "%a %b %d, %H:%M:%S", &tmBuf) == 0) {
         ctx.dateTimeLine = std::unexpected(Error{"strftime failed"});
@@ -203,8 +208,8 @@ void detectPackages(FFContext& ctx) {
     while (pos < whole->size()) {
         pos = whole->find("Package:", pos);
         if (pos == std::string::npos) break;
-        ++pkgs;
-        ++pos;
+        if (pos == 0 || (*whole)[pos - 1] == '\n') ++pkgs; // dpkg fields start at column 0
+        pos += sizeof("Package:") - 1;
     }
     ctx.pkgLine = std::to_string(pkgs) + " (dpkg)";
 }

@@ -84,8 +84,11 @@ void detectGpuLinux(FFContext& ctx) {
         if (ch == ']') { bracket = false; continue; }
         if (!bracket) out += ch;
     }
-    auto b = out.find(':');
-    out = trimVal(out.substr(b == std::string::npos ? 0 : b + 1)).value_or("");
+    // lspci lines look like "0000:00:02.0 VGA compatible controller: Device ...";
+    // the first ": " separates the class description from the device name —
+    // the bare colons before it belong to the bus slot ("0000:00:02.0").
+    auto b = out.find(": ");
+    out = trimVal(b == std::string::npos ? out : out.substr(b + 2)).value_or("");
     ctx.gpuLine = out.empty() ? Result<std::string>{"N/A"} : Result<std::string>{std::move(out)};
 }
 

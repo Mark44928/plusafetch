@@ -54,8 +54,8 @@ void detectBatteryAndroid(FFContext& ctx) {
     for (const char** b = bats; *b; ++b) {
         auto cap = readFirstLine(std::string(*b) + "/capacity");
         if (cap) {
-            std::string status = readFirstLine(std::string(*b) + "/status").value_or("");
-            std::string out = *cap + "%";
+            std::string status = sanitizeForTerminal(readFirstLine(std::string(*b) + "/status").value_or(""));
+            std::string out = sanitizeForTerminal(*cap) + "%";
             if (!status.empty()) out += " (" + status + ")";
             ctx.batteryLine = std::move(out);
             return;
@@ -67,19 +67,32 @@ void detectBatteryAndroid(FFContext& ctx) {
     try {
         auto j = nlohmann::json::parse(*raw, nullptr, false);
         if (!j.is_object()) { ctx.batteryLine = std::unexpected(Error{"battery: invalid JSON"}); return; }
+        // Safe getter: never throws on null/missing; strings verbatim,
+        // numbers/bools dumped (booleans -> true/false).
+        auto str = [&](const char* k) -> std::string {
+            if (!j.contains(k)) return {};
+            const auto& v = j[k];
+            if (v.is_string()) return v.get<std::string>();
+            if (v.is_null()) return {};
+            return v.dump();
+        };
+        std::string pct = str("percentage");
+        std::string status = sanitizeForTerminal(str("status"));
+        std::string health = str("health");
+        std::string plugged = str("plugged");
         std::string out;
-        if (j.contains("percentage")) out = j["percentage"].dump() + "%";
-        if (j.contains("status"))    out += " (" + j["status"].get<std::string>() + ")";
-        if (j.contains("health") && j["health"].get<std::string>() != "GOOD")
-            out += " · " + j["health"].get<std::string>();
+        if (!pct.empty()) out = sanitizeForTerminal(pct) + "%";
+        if (!status.empty()) out += out.empty() ? status : " (" + status + ")";
+        if (!health.empty() && health != "GOOD") out += out.empty() ? "· " + sanitizeForTerminal(health) : " · " + sanitizeForTerminal(health);
         if (j.contains("temperature")) {
             // v50/v51 termux-api formats: number or locale-decimal string ("27,4" / "27.4")
-            std::string t = j["temperature"].is_string() ? j["temperature"].get<std::string>() : j["temperature"].dump();
+            std::string t = sanitizeForTerminal(str("temperature"));
             for (auto& ch : t) if (ch == ',') ch = '.';
-            out += ", " + t + "°C";
+            if (!t.empty()) out += out.empty() ? t + "°C" : ", " + t + "°C";
         }
-        if (j.contains("plugged") && j["plugged"].get<std::string>() != "PLUGGED_USB_ANDROID")
-            out += ", " + j["plugged"].get<std::string>();
+        if (!plugged.empty() && plugged != "PLUGGED_USB_ANDROID")
+            out += out.empty() ? sanitizeForTerminal(plugged) : ", " + sanitizeForTerminal(plugged);
+        if (out.empty()) { ctx.batteryLine = std::unexpected(Error{"battery: empty status"}); return; }
         ctx.batteryLine = std::move(out);
     } catch (...) {
         ctx.batteryLine = std::unexpected(Error{"battery parse failed"});
@@ -149,9 +162,9 @@ void detectTelephonyAndroid(FFContext& ctx) {
         auto str = [&](const char* k) -> std::string {
             if (!j.contains(k)) return {};
             const auto& v = j[k];
-            if (v.is_string()) return v.get<std::string>();
+            if (v.is_string()) return sanitizeForTerminal(v.get<std::string>());
             if (v.is_null()) return {};
-            return v.dump(); // booleans/numbers render verbatim
+            return sanitizeForTerminal(v.dump()); // booleans/numbers render verbatim
         };
         std::string op = str("network_operator_name");
         std::string net = str("network_type");
@@ -178,13 +191,18 @@ void detectWifiAndroid(FFContext& ctx) {
     try {
         auto j = nlohmann::json::parse(*raw, nullptr, false);
         if (!j.is_object()) { ctx.wifiLine = std::unexpected(Error{"invalid JSON"}); return; }
-        if (j.contains("API_ERROR")) { ctx.wifiLine = std::string("N/A (") + j["API_ERROR"].dump() + ")"; return; }
+        if (j.contains("API_ERROR")) {
+            auto err = j["API_ERROR"];
+            std::string e = err.is_string() ? err.get<std::string>() : err.dump();
+            ctx.wifiLine = std::string("N/A (") + sanitizeForTerminal(e) + ")";
+            return;
+        }
         auto str = [&](const char* k) -> std::string {
             if (!j.contains(k)) return {};
             const auto& v = j[k];
-            if (v.is_string()) return v.get<std::string>();
+            if (v.is_string()) return sanitizeForTerminal(v.get<std::string>());
             if (v.is_null()) return {};
-            return v.dump();
+            return sanitizeForTerminal(v.dump());
         };
         std::string ssid = str("ssid");
         std::vector<std::string> parts;

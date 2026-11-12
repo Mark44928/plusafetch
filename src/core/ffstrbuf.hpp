@@ -47,22 +47,24 @@ inline void ffStrbufDestroy(FFstrbuf& b) noexcept {
     b = FFstrbuf{};
 }
 
-inline void ffStrbufEnsureFree(FFstrbuf& b, uint32_t freeBytes) noexcept {
-    if (b.allocated != 0 && ffStrbufGetFree(b) >= freeBytes) return;
+[[nodiscard]] inline bool ffStrbufEnsureFree(FFstrbuf& b, uint32_t freeBytes) noexcept {
+    if (b.allocated != 0 && ffStrbufGetFree(b) >= freeBytes) return true;
     uint32_t cap = b.allocated ? b.allocated : kStrbufDefaultAlloc;
     while (static_cast<uint64_t>(b.length) + freeBytes + 1 > cap) {
         cap = (cap < kStrbufDefaultAlloc) ? kStrbufDefaultAlloc : cap * 2; // doubling, floor 32
     }
     char* nb = static_cast<char*>(std::malloc(cap));
+    if (!nb) return false; // OOM: caller drops the append rather than overflow
     std::memcpy(nb, b.chars, static_cast<size_t>(b.length) + 1);
     if (b.allocated != 0) std::free(b.chars);
     b.chars = nb;
     b.allocated = cap;
+    return true;
 }
 
 inline void ffStrbufAppendNS(FFstrbuf& b, const char* s, uint32_t n) noexcept {
     if (s == nullptr || n == 0) return;
-    ffStrbufEnsureFree(b, n);
+    if (!ffStrbufEnsureFree(b, n)) return; // OOM: drop bytes, never corrupt heap
     std::memcpy(b.chars + b.length, s, n);
     b.length += n;
     b.chars[b.length] = '\0';

@@ -7,6 +7,7 @@ namespace plf {
 std::string androidProp(const char* key) noexcept;
 std::string stripJsonComments(std::string_view src);
 std::string stripTrailingCommas(std::string_view src);
+std::string sanitizeForTerminal(std::string_view s);
 bool fileReadable(std::string_view path);
 
 // Shared detectors (common_detect.cpp) — POSIX, all platforms

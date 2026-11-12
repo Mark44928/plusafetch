@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0] - 2026-11-12
+
+### Added — customization & features
+- Per-module key renames in config: entries in `"modules"` may be strings ("cpu") or objects (`{"name": "cpu", "key": "Processor"}`) — affects render AND `--json` keys.
+- Config `"keyColor"`: hex `"#rrggbb"` or `[r,g,b]` — recolors the key column (truecolor).
+- Config `"boldKeys"` — bold key labels.
+- Config `"hideKeys"` / CLI `--values-only` — print values only, no key column.
+- Config `"separatorLength"` — Separator module dash count (clamped 0..200).
+- Unknown module names in config now print a stderr warning and are skipped instead of aborting.
+- `--gen-config` template documents all new keys.
+
 ## [0.1.2] - 2026-11-12
 
 ### Fixed

@@ -133,10 +133,13 @@ static void detectSeparatorModule(FFContext&) {}
 static const char* const kSeparatorFormat[] = {"separator", nullptr};
 static void printSeparatorModule(void*) noexcept {
     FFContext& ctx = *g_ctx;
+    int n = ctx.separatorLength;
+    if (n < 0) n = 0;
+    if (n > 200) n = 200;
     const char* dim = ctx.color ? "\033[2;37m" : "";
     const char* reset = ctx.color ? "\033[0m" : "";
     ffStrbufAppendS(ctx.frame.b, dim);
-    ffStrbufAppendS(ctx.frame.b, "──────────────");
+    while (n-- > 0) ffStrbufAppendS(ctx.frame.b, "─");
     ffStrbufAppendS(ctx.frame.b, reset);
     ffStrbufAppendC(ctx.frame.b, '\n');
 }
@@ -181,8 +184,14 @@ extern const FFModuleBaseInfo kColorsModuleInfo{ "colors", "Colors", "a row of t
 static void detectCommandModule(FFContext& ctx) {
     if (ctx.configCommand.empty()) { ctx.commandLine = std::unexpected(Error{"no 'command' in config"}); return; }
     const char* sh = std::getenv("SHELL");
-    if (!sh || !*sh) sh = "/system/bin/sh";
-    const char* const argv[] = { sh, "-c", ctx.configCommand.c_str(), nullptr };
+    if (!sh || !*sh)
+        sh =
+#if defined(__ANDROID__)
+            "/system/bin/sh";
+#else
+            "/bin/sh";
+#endif
+    const char* const argv[] = { sh, "-c", ctx.configCommand.c_str(), nullptr }; // single -c string by design
     auto r = execCapture(argv, 1u << 16);
     if (!r) { ctx.commandLine = std::unexpected(Error{r.error()}); return; }
     std::string s{*r};
@@ -195,16 +204,11 @@ static const char* const kCommandFormat[] = {"command", nullptr};
 static void printCommandModule(void*) noexcept {
     FFContext& ctx = *g_ctx;
     std::string key = ctx.configCommandKey.empty() ? "Command" : ctx.configCommandKey;
+    auto rename = ctx.keyRenames.find("command"); // uniform rename rule: module object key wins
+    if (rename != ctx.keyRenames.end() && !rename->second.empty()) key = rename->second;
     auto v = ctx.commandLine;
     std::string value = v ? std::move(*v) : "N/A";
-    const char* keyCol = "";
-    if (ctx.color) keyCol = ctx.truecolor ? "\033[38;2;120;180;255m" : "\033[36m";
-    ffStrbufAppendS(ctx.frame.b, keyCol);
-    ffStrbufAppendS(ctx.frame.b, key.c_str());
-    if (ctx.color) ffStrbufAppendS(ctx.frame.b, "\033[0m");
-    ffStrbufAppendS(ctx.frame.b, ": ");
-    ffStrbufAppendS(ctx.frame.b, value.c_str());
-    ffStrbufAppendC(ctx.frame.b, '\n');
+    printKeyLine(ctx, key, value);
 }
 extern const FFModuleBaseInfo kCommandModuleInfo{ "command", "Command", "run a shell command from config.jsonc and print the first line",
     &initOptionsDefault, &destroyOptionsDefault, nullptr,
@@ -239,23 +243,20 @@ static void detectBrightnessModule(FFContext& ctx) {
 #if defined(__ANDROID__)
     detectBrightnessAndroid(ctx);
 #else
-    auto dev = readFirstLine("/sys/class/backlight/acpi_video0/max_brightness");
-    auto cur = readFirstLine("/sys/class/backlight/acpi_video0/brightness");
-    if (!dev || !cur) {
-        // fall back to the first directory under /sys/class/backlight
-        int guess = 0;
-        const char* d = "/sys/class/backlight/amdgpu_bl0";
-        dev = readFirstLine(std::string(d) + "/max_brightness");
-        cur = readFirstLine(std::string(d) + "/brightness");
-        (void)guess;
-    } else {
-        uint64_t maxv = std::strtoull(dev->c_str(), nullptr, 10);
-        uint64_t curv = std::strtoull(cur->c_str(), nullptr, 10);
-        if (maxv) {
-            char out[32];
-            std::snprintf(out, sizeof out, "%llu%%", (unsigned long long)(curv * 100 / maxv));
-            ctx.brightnessLine = std::string{out};
-        }
+    // Try acpi_video0, then the first common discrete-GPU backlight; use
+    // whichever pair (max, cur) is readable and compute the percentage once.
+    const char* devs[] = { "/sys/class/backlight/acpi_video0", "/sys/class/backlight/amdgpu_bl0", nullptr };
+    for (const char** d = devs; *d; ++d) {
+        auto mx = readFirstLine(std::string(*d) + "/max_brightness");
+        auto cu = readFirstLine(std::string(*d) + "/brightness");
+        if (!mx || !cu) continue;
+        uint64_t maxv = std::strtoull(mx->c_str(), nullptr, 10);
+        uint64_t curv = std::strtoull(cu->c_str(), nullptr, 10);
+        if (!maxv || curv > maxv) continue;
+        char out[32];
+        std::snprintf(out, sizeof out, "%llu%%", (unsigned long long)(curv * 100 / maxv));
+        ctx.brightnessLine = std::string{out};
+        break;
     }
     if (!ctx.brightnessLine) ctx.brightnessLine = std::unexpected(Error{"no readable backlight"});
 #endif

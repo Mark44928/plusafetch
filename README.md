@@ -4,7 +4,7 @@ A modular **C++23** system fetch tool for **Termux (Android, unrooted)** with a 
 Fastfetch-style module registry, zero-allocation string buffers, parallel detection, single-write output.
 **No logo. Ever.** Text and data only.
 
-> Status: v0.1.0 · text-only · MIT
+> Status: v0.2.0 · text-only · MIT
 
 Example output (Android 12 via Termux on MediaTek Helio P22):
 
@@ -61,6 +61,7 @@ plusafetch
 | `plusafetch --json` | JSON dump of detected modules (`null` when a module is Unsupported) |
 | `plusafetch --format '{os}\n{cpu}\n{memory}'` | template; placeholders `{name}`, slices `{os~0,5}` |
 | `plusafetch --modules os,cpu,battery` | comma-separated module list |
+| `plusafetch --values-only` | print values only (no key column) |
 | `plusafetch --gen-config` | write JSONC config (atomic, see below) |
 | `plusafetch --list-modules` | list every registered module |
 | `plusafetch --notify` | send a Termux notification when done (Android only) |
@@ -74,15 +75,20 @@ plusafetch --format 'os={os} cpu={cpu} mem={memory}'
 
 ### Config (`$HOME/.config/plusafetch/config.jsonc`)
 
-JSONC with comments (stripped before strict parsing). `$XDG_CONFIG_HOME` is honored; `PLUSAFETCH_CONFIG` overrides the path. Writes use an atomic `$TMPDIR/plusafetch_config.tmp` + `rename()`.
+JSONC with comments (stripped before strict parsing). `$XDG_CONFIG_HOME` is honored; `PLUSAFETCH_CONFIG` overrides the path. Config writes use `mkstemp()` in `$TMPDIR` (0600) + `rename()`.
 
 ```jsonc
 {
   // display order of modules
   "modules": ["title","os","kernel","host","cpu","memory","disk","uptime",
               "packages","shell","terminal","datetime","separator","colors"],
+  // per-module key rename: {"name": "cpu", "key": "Processor"} (render + JSON)
   "colors": true,      // master switch
   "truecolor": true,   // 24-bit ANSI (\\033[38;2;R;G;Bm)
+  "keyColor": "#78b4ff", // hex RGB (or [r,g,b]) for the key column
+  "boldKeys": false,   // bold key labels
+  "hideKeys": false,   // values-only mode (like --values-only)
+  "separatorLength": 14, // Separator module dash count (0..200)
   //"command": "date", // Command module: sh -c string, first line is printed
   //"commandKey": "Uptime" // label for the Command module
 }

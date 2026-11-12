@@ -51,7 +51,8 @@ Result<std::string> readFirstLine(std::string_view path) {
     return readTextFile(path)
         .and_then([](std::string s) -> Result<std::string> {
             auto nl = s.find('\n');
-            return trimVal(nl == std::string::npos ? s : s.substr(0, nl));
+            return trimVal(nl == std::string::npos ? s : s.substr(0, nl))
+                .and_then(requireNonEmpty); // documented contract: empty line -> error
         });
 }
 
@@ -94,7 +95,9 @@ Result<std::string> execCapture(const char* const argv[], std::size_t maxBytes) 
     }
     ::close(pipefd[0]);
     int status = 0;
-    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    pid_t wp = 0;
+    while ((wp = ::waitpid(pid, &status, 0)) < 0 && errno == EINTR) {}
+    if (wp < 0) return std::unexpected(errCtx("waitpid failed", errno));
     if (total == 0 && (WIFEXITED(status) && WEXITSTATUS(status) != 0))
         return std::unexpected(errCtx(std::string("exec failed: ") + argv[0], WEXITSTATUS(status)));
     return std::move(out);
@@ -138,6 +141,19 @@ bool fileReadable(std::string_view path) {
     if (fd < 0) return false;
     ::close(fd);
     return true;
+}
+
+// Replace bytes that could forge terminal escape sequences (C0 controls, DEL)
+// with spaces. UTF-8 multibyte sequences are never affected (their bytes are
+// all >= 0x80), so this is safe for valid UTF-8 text from untrusted sources.
+std::string sanitizeForTerminal(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        out.push_back((c < 0x20 || c == 0x7f) ? ' ' : static_cast<char>(c));
+    }
+    return out;
 }
 
 #ifdef __ANDROID__
