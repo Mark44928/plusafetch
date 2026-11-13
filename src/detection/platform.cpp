@@ -6,12 +6,14 @@
 #include "context.hpp"
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <poll.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
 #include <csignal>
 #include <cctype>
+#include <chrono>
 #include <vector>
 #include <array>
 
@@ -81,11 +83,25 @@ Result<std::string> execCapture(const char* const argv[], std::size_t maxBytes) 
         _exit(127); // exec failed
     }
     ::close(pipefd[1]);
+    constexpr int64_t execTimeoutMs = 2000; // kill termux-api hangs; a fetch that never returns is worse than a missing module
     std::string out;
     out.reserve(512);
     char blk[4096];
     std::size_t total = 0;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(execTimeoutMs);
+    bool timedOut = false;
     for (;;) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto remainMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count());
+        if (remainMs <= 0) { timedOut = true; break; }
+        struct pollfd pfd{pipefd[0], POLLIN, 0};
+        const int pr = ::poll(&pfd, 1, remainMs);
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (pr == 0) { timedOut = true; break; } // deadline reached; child may still be running
+        if (!(pfd.revents & (POLLIN | POLLHUP | POLLERR))) continue;
         ssize_t n = ::read(pipefd[0], blk, sizeof blk);
         if (n < 0) { if (errno == EINTR) continue; break; }
         if (n == 0) break;
@@ -94,6 +110,15 @@ Result<std::string> execCapture(const char* const argv[], std::size_t maxBytes) 
         out.append(blk, static_cast<size_t>(n));
     }
     ::close(pipefd[0]);
+    if (timedOut) {
+        ::kill(pid, SIGKILL);
+        for (int i = 0; i < 50; ++i) {
+            int kw = ::waitpid(pid, nullptr, 0);
+            if (kw == pid) break;
+            ::usleep(10000);
+        }
+        return std::unexpected(errCtx(std::string("exec timeout: ") + argv[0], 127));
+    }
     int status = 0;
     pid_t wp = 0;
     while ((wp = ::waitpid(pid, &status, 0)) < 0 && errno == EINTR) {}
