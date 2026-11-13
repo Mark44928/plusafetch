@@ -117,7 +117,7 @@ static std::string titleText(const FFContext& ctx) {
 static void printTitleModule(void*) noexcept {
     FFContext& ctx = *g_ctx;
     std::string t = titleText(ctx);
-    if (ctx.color) ffStrbufAppendS(ctx.frame.b, "\033[1;97m");
+    if (ctx.color) ffStrbufAppendS(ctx.frame.b, ctx.truecolor ? "\033[1;38;2;226;232;255m" : "\033[1;97m");
     ffStrbufAppendS(ctx.frame.b, t.c_str());
     if (ctx.color) ffStrbufAppendS(ctx.frame.b, "\033[0m");
     ffStrbufAppendC(ctx.frame.b, '\n');
@@ -136,7 +136,7 @@ static void printSeparatorModule(void*) noexcept {
     int n = ctx.separatorLength;
     if (n < 0) n = 0;
     if (n > 200) n = 200;
-    const char* dim = ctx.color ? "\033[2;37m" : "";
+    const char* dim = ctx.color ? (ctx.truecolor ? "\033[2;38;2;110;118;128m" : "\033[2;37m") : "";
     const char* reset = ctx.color ? "\033[0m" : "";
     ffStrbufAppendS(ctx.frame.b, dim);
     while (n-- > 0) ffStrbufAppendS(ctx.frame.b, "─");
