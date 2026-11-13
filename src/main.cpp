@@ -155,6 +155,7 @@ void printUsage(FILE* out) {
         "  plusafetch --modules a,b   Comma-separated module list (default: config or built-in)\n"
         "  plusafetch --list-modules  List every registered module\n"
         "  plusafetch --values-only   Print values only (no key column)\n"
+        "  plusafetch --verify-config Validate config at $HOME/.config/plusafetch/config.jsonc (exit 0 if valid)\n"
         "  plusafetch --gen-config    Write default config to $HOME/.config/plusafetch/config.jsonc\n"
         "  plusafetch --notify        Send a Termux notification when done (Android)\n"
         "  plusafetch --no-color      Disable colors\n"
@@ -174,7 +175,7 @@ void printListModules() {
 }
 
 int run(int argc, char** argv) {
-    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false;
+    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false;
     bool formatSet = false;
     std::string formatText;
     std::string modulesCsv;
@@ -188,6 +189,7 @@ int run(int argc, char** argv) {
         else if (a == "--no-color") colorMode = -1;
         else if (a == "--color") colorMode = 1;
         else if (a == "--values-only") wantValuesOnly = true;
+        else if (a == "--verify-config") wantVerify = true;
         else if (a == "--gen-config") wantGenConfig = true;
         else if (a == "--list-modules") wantList = true;
         else if (a == "--version" || a == "-v") wantVersion = true;
@@ -213,6 +215,39 @@ int run(int argc, char** argv) {
     signal(SIGHUP, SIG_IGN);
 
     FFContext ctx;
+    if (wantVerify) {
+        const std::string path = configPath();
+        auto raw = readTextFile(path, 1u << 20);
+        if (!raw) {
+            std::fprintf(stderr, "%s: no config at %s (defaults will be used — OK)\n", kName, path.c_str());
+            return 0;
+        }
+        std::string stripped = stripTrailingCommas(stripJsonComments(*raw));
+        auto j = nlohmann::json::parse(stripped, nullptr, /*allow_exceptions=*/false);
+        if (j.is_discarded()) {
+            std::fprintf(stderr, "%s: config at %s is not valid JSONC\n", kName, path.c_str());
+            return 65;
+        }
+        if (!j.is_object()) {
+            std::fprintf(stderr, "%s: config at %s must be a JSON object\n", kName, path.c_str());
+            return 65;
+        }
+        // Surface suspicious types so silently-empty effects don't surprise.
+        if (j.contains("modules") && !j["modules"].is_array())
+            std::fprintf(stderr, "%s: 'modules' is %s (expected array) — defaulting to builtin\n", kName, j["modules"].type_name());
+        if (j.contains("colors") && !j["colors"].is_boolean())
+            std::fprintf(stderr, "%s: 'colors' is %s (expected bool) — ignored\n", kName, j["colors"].type_name());
+        if (j.contains("truecolor") && !j["truecolor"].is_boolean())
+            std::fprintf(stderr, "%s: 'truecolor' is %s (expected bool) — ignored\n", kName, j["truecolor"].type_name());
+        if (j.contains("hideKeys") && !j["hideKeys"].is_boolean())
+            std::fprintf(stderr, "%s: 'hideKeys' is %s (expected bool) — ignored\n", kName, j["hideKeys"].type_name());
+        if (j.contains("boldKeys") && !j["boldKeys"].is_boolean())
+            std::fprintf(stderr, "%s: 'boldKeys' is %s (expected bool) — ignored\n", kName, j["boldKeys"].type_name());
+        if (j.contains("separatorLength") && !j["separatorLength"].is_number())
+            std::fprintf(stderr, "%s: 'separatorLength' is %s (expected number) — ignored\n", kName, j["separatorLength"].type_name());
+        std::fprintf(stdout, "%s: config at %s is valid\n", kName, path.c_str());
+        return 0;
+    }
 #if defined(__ANDROID__)
     ctx.platform = Platform::AndroidTermux;
 #else

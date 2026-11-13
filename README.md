@@ -50,6 +50,7 @@ plusafetch
 | `plusafetch --format '{os}\n{cpu}\n{memory}'` | template; placeholders `{name}`, slices `{os~0,5}` |
 | `plusafetch --modules os,cpu,battery` | comma-separated module list |
 | `plusafetch --values-only` | print values only (no key column) |
+| `plusafetch --verify-config` | validate config.jsonc (exit 0 OK / 65 invalid) |
 | `plusafetch --gen-config` | write JSONC config (atomic, see below) |
 | `plusafetch --list-modules` | list every registered module |
 | `plusafetch --notify` | send a Termux notification when done (Android only) |

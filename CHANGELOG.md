@@ -2,7 +2,10 @@
 
 ## [0.1.0] - 2026-11-12
 
-Initial release of Plusafetch (C++23, fastfetch-style A–Z module registry, zero-allocation FFstrbuf, std::expected, jthread parallel detection, single-write output). Everything below shipped in this one release:
+Initial release plus on-device additions (no version bump — same public tag):
+- `--verify-config`: validate `config.jsonc` (exit 0 if OK/missing, 65 if invalid; suspicious types reported to stderr as warnings).
+- Per-glyph font fallback chain in `scripts/ansi2png.py` (CaskaydiaCove NF → DejaVu Sans Mono) — re-rendered example screenshot.
+- Cross-family README links and release `v0.1.0` published. of Plusafetch (C++23, fastfetch-style A–Z module registry, zero-allocation FFstrbuf, std::expected, jthread parallel detection, single-write output). Everything below shipped in this one release:
 
 - fastfetch-style A–Z module registry (`FFModuleBaseInfo`: `name`, `displayName`, `description`, `initOptions`, `destroyOptions`, `parseJsonObject`, `detect`, `moduleValue`, `printModule`, `generateJsonResult`, `generateJsonConfig`, `formatArgs`).
 - 23 modules: title, os, kernel, host, gpu, cpu, memory, disk, uptime, packages, shell, terminal, locale, datetime, separator, colors, battery, brightness, sensors, telephony, wifi, clipboard, command.
