@@ -163,8 +163,11 @@ static void printColorsModule(void*) noexcept {
         if (ctx.color) {
             if (ctx.truecolor)
                 std::snprintf(esc, sizeof esc, "\033[38;2;%d;%d;%dm■", rgb[c][0], rgb[c][1], rgb[c][2]);
-            else
-                std::snprintf(esc, sizeof esc, "\033[%dm■\033[0m", 31 + c);
+            else {
+                // 90 is bright black; bare 38 would not be a color code
+                static constexpr int basic[8] = { 31, 32, 33, 34, 35, 36, 37, 90 };
+                std::snprintf(esc, sizeof esc, "\033[%dm■\033[0m", basic[c]);
+            }
         } else {
             esc[0] = '#'; esc[1] = ' '; esc[2] = '\0';
         }
