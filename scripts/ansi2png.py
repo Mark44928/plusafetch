@@ -12,6 +12,7 @@ Usage:
   stdin ok: … | python3 ansi2png.py - out.png
 """
 import argparse
+import os
 import re
 import sys
 
@@ -290,6 +291,13 @@ def emulate(raw: bytes, rows=34, cols=100):
 def cells_from(raw: bytes, rows=34, cols=100):
     return emulate(raw, rows, cols)
 
+def file_exists(p):
+    try:
+        return os.path.isfile(p)
+    except OSError:
+        return False
+
+
 DEFAULT_FG = (0xD6, 0xDE, 0xE8)
 DEFAULT_BG = (0x0C, 0x1F, 0x17)
 BOLD_FG = (0xFF, 0xFF, 0xFF)
@@ -298,6 +306,30 @@ def pick_color(c, default, bold=False):
     if c is None:
         return BOLD_FG if bold else default
     return c[1]
+
+class FontSet:
+    """Per-glyph font fallback chain (like a real terminal's fontconfig)."""
+
+    def __init__(self, paths, size):
+        from fontTools.ttLib import TTFont
+        self.fonts = []
+        for path in paths:
+            try:
+                f = ImageFont.truetype(path, size)
+                cmap = TTFont(path, lazy=True).getBestCmap()
+                self.fonts.append((f, set(cmap) if cmap else set()))
+            except Exception:
+                pass
+        if not self.fonts:
+            raise SystemExit('no usable fonts for rendering')
+
+    def pick(self, ch):
+        cp = ord(ch)
+        for f, cov in self.fonts:
+            if cp in cov:
+                return f
+        return self.fonts[0][0]
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -309,6 +341,7 @@ def main():
     ap.add_argument("--cols", type=int, default=100, help="terminal width in cells (default 100)")
     ap.add_argument("--rows", type=int, default=34, help="terminal height in cells (default 34)")
     ap.add_argument("--scale", type=int, default=2, help="integer upscale (default 2 = retina)")
+    ap.add_argument("--fallback", default=None, help="fallback TTF/OTF for missing glyphs (defaults to DejaVu Sans Mono if present)")
     ap.add_argument("--bg", default="#0C1F17", help="page background (default Grub Blasters green-black)")
     args = ap.parse_args()
 
@@ -326,7 +359,15 @@ def main():
                                        capture_output=True, text=True, check=True).stdout.strip()
         except Exception:
             font_path = "DejaVuSansMono"
-    font = ImageFont.truetype(font_path, args.size)
+    fb_args = [args.font_file or font_path]
+    if args.fallback:
+        fb_args.append(args.fallback)
+    else:
+        for cand in ("/data/data/com.termux/files/usr/share/fonts/TTF/DejaVuSansMono.ttf",):
+            if file_exists(cand):
+                fb_args.append(cand)
+    fs_ = FontSet(fb_args, args.size)
+    font = fs_.fonts[0][0]
     cw = max(1, round(font.getlength("M")))
     ch = args.size + max(4, args.size // 3)
 
@@ -348,7 +389,7 @@ def main():
             if bg is not None:
                 draw.rectangle([x, y, x + cw - 1, y + ch - 1], fill=bgc)
             if ch_ != " ":
-                draw.text((x, y), ch_, font=font, fill=fgr)
+                draw.text((x, y), ch_, font=fs_.pick(ch_), fill=fgr)
     im = im.resize((im.width * args.scale, im.height * args.scale), Image.NEAREST)
     im.save(args.output)
     print(f"wrote {args.output} ({im.width}x{im.height}) from {len(lines)} lines")
