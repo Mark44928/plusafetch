@@ -6,23 +6,11 @@ Fastfetch-style module registry, zero-allocation string buffers, parallel detect
 
 > Status: v0.1.0 · text-only · MIT
 
-Example output (Android 12 via Termux on MediaTek Helio P22):
+## Example
 
-```
-u0_a701@myT10
-OS: Android 12
-Kernel: Linux 4.19.191
-Host: myT10
-CPU: MT6762 (8 cores)
-Memory: 2.7 GiB used / 3.7 GiB
-Disk: 1.6 GiB used / 1.6 GiB
-Packages: 500 (dpkg)
-Shell: zsh
-Terminal: xterm-256color
-DateTime: Thu Nov 12, 20:57:26
-──────────────
-■ ■ ■ ■ ■ ■ ■ ■
-```
+![Plusafetch — system fetch on Android 12 (Termux)](docs/screenshot.png)
+
+Rendered with [`scripts/ansi2png.py`](scripts/ansi2png.py), a tiny terminal-emulator → PNG renderer (numpy + Pillow) that turns captured ANSI output into a pixel-perfect screenshot — no browser required. Capture with `plusafetch --color > out.ansi`, render with `python3 scripts/ansi2png.py out.ansi screenshot.png`.
 
 ## Build
 
