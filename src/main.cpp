@@ -42,6 +42,7 @@ const char* const kAllStructure[] = {
     "title", "os", "kernel", "host", "gpu", "cpu", "memory", "disk",
     "uptime", "packages", "shell", "terminal", "locale", "datetime",
     "battery", "brightness", "sensors", "telephony", "wifi", "clipboard",
+    "command",
     "separator", "colors",
 };
 

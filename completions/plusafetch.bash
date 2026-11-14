@@ -6,7 +6,7 @@ _plusafetch() {
 
     case "$prev" in
         --format)   COMPREPLY=($(compgen -W "{os} {cpu} {memory} {kernel} {disk} {uptime} {shell} {terminal}" -- "$cur")); return ;;
-        --modules)  COMPREPLY=($(compgen -W "title os kernel host cpu gpu memory disk uptime packages shell terminal datetime locale separator colors command" -- "$cur")); return ;;
+        --modules)  COMPREPLY=($(compgen -W "title os kernel host cpu gpu memory disk uptime packages shell terminal datetime locale separator colors command battery brightness sensors telephony wifi clipboard" -- "$cur")); return ;;
     esac
 
     local opts="--all --json --format --modules --list-modules --values-only
