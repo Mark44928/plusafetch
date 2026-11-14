@@ -25,7 +25,7 @@ SRC := src/main.cpp \
 
 BIN      := plusafetch
 
-.PHONY: all clean install run check
+.PHONY: all clean install run check skins completions-install
 
 all: $(BIN)
 
@@ -49,3 +49,16 @@ check: $(BIN)
 	./$(BIN) --json
 	./$(BIN) --format '{os} :: {cpu} :: {memory} :: {kernel~0,7}'
 	./$(BIN) --verify-config || true
+
+# Validate every shipped ricer skin against the real config parser.
+skins: $(BIN)
+	@set -e; for f in docs/skins/*.jsonc; do \
+		PLUSAFETCH_CONFIG="$$PWD/$$f" ./$(BIN) --verify-config >/dev/null; \
+		echo "ok $$f"; \
+	done
+
+completions-install:
+	install -d "$(DESTDIR)$(PREFIX)/share/bash-completion/completions"
+	install -m 0644 completions/plusafetch.bash "$(DESTDIR)$(PREFIX)/share/bash-completion/completions/plusafetch"
+	install -d "$(DESTDIR)$(PREFIX)/share/zsh/site-functions"
+	install -m 0644 completions/_plusafetch "$(DESTDIR)$(PREFIX)/share/zsh/site-functions/_plusafetch"

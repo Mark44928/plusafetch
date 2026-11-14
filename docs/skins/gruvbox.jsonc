@@ -1,0 +1,30 @@
+// Gruvbox — amber key column, hardware-first, wide rule.
+// cp docs/skins/gruvbox.jsonc ~/.config/plusafetch/config.jsonc
+{
+  "modules": [
+    "title",
+    { "name": "cpu",      "key": "CPU     " },
+    { "name": "gpu",      "key": "GPU     " },
+    { "name": "memory",   "key": "RAM     " },
+    { "name": "disk",     "key": "Disk    " },
+    { "name": "os",       "key": "OS      " },
+    { "name": "kernel",   "key": "Kernel  " },
+    { "name": "host",     "key": "Host    " },
+    { "name": "uptime",   "key": "Uptime  " },
+    { "name": "packages", "key": "Pkgs    " },
+    { "name": "shell",    "key": "Shell   " },
+    { "name": "terminal", "key": "Term    " },
+    { "name": "datetime", "key": "Date    " },
+    "separator",
+    "colors",
+    { "name": "command",  "key": "User    " }
+  ],
+  "colors": true,
+  "truecolor": true,
+  "keyColor": "#FABD2F",
+  "boldKeys": true,
+  "hideKeys": false,
+  "separatorLength": 52,
+  "command": "whoami",
+  "commandKey": "User"
+}

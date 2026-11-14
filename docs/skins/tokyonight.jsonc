@@ -1,0 +1,30 @@
+// Tokyo Night — blue key column, quiet labels, compact separator.
+// cp docs/skins/tokyonight.jsonc ~/.config/plusafetch/config.jsonc
+{
+  "modules": [
+    "title",
+    { "name": "os",       "key": "OS      " },
+    { "name": "kernel",   "key": "Kernel  " },
+    { "name": "host",     "key": "Host    " },
+    { "name": "cpu",      "key": "CPU     " },
+    { "name": "gpu",      "key": "GPU     " },
+    { "name": "memory",   "key": "Memory  " },
+    { "name": "disk",     "key": "Disk    " },
+    { "name": "uptime",   "key": "Uptime  " },
+    { "name": "packages", "key": "Pkgs    " },
+    { "name": "shell",    "key": "Shell   " },
+    { "name": "terminal", "key": "Term    " },
+    { "name": "locale",   "key": "Locale  " },
+    "separator",
+    "colors",
+    { "name": "command",  "key": "Now     " }
+  ],
+  "colors": true,
+  "truecolor": true,
+  "keyColor": "#7AA2F7",
+  "boldKeys": false,
+  "hideKeys": false,
+  "separatorLength": 36,
+  "command": "date +'%H:%M · %a %d %b'",
+  "commandKey": "Now"
+}

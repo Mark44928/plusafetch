@@ -1,0 +1,23 @@
+// Minimal — values only, no key column, no separator, no color blocks.
+// cp docs/skins/minimal.jsonc ~/.config/plusafetch/config.jsonc
+{
+  "modules": [
+    "title",
+    "os",
+    "kernel",
+    "host",
+    "cpu",
+    "memory",
+    "disk",
+    "uptime",
+    "packages",
+    "shell",
+    "terminal"
+  ],
+  "colors": true,
+  "truecolor": true,
+  "keyColor": "#78b4ff",
+  "boldKeys": false,
+  "hideKeys": true,
+  "separatorLength": 0
+}

@@ -83,6 +83,34 @@ JSONC with comments (stripped before strict parsing). `$XDG_CONFIG_HOME` is hono
 }
 ```
 
+### Ricer skins
+
+Ready-to-copy configs in [`docs/skins/`](docs/skins/) — every one passes `--verify-config`:
+
+| Skin | File | Look |
+|---|---|---|
+| Greenit | `docs/skins/greenit.jsonc` | phosphor-green bold keys, 44-dash rule |
+| Tokyo Night | `docs/skins/tokyonight.jsonc` | blue key column, quiet labels |
+| Gruvbox | `docs/skins/gruvbox.jsonc` | amber bold keys, hardware-first order |
+| Minimal | `docs/skins/minimal.jsonc` | values only, no key column, no rule |
+
+```sh
+cp docs/skins/greenit.jsonc ~/.config/plusafetch/config.jsonc
+plusafetch --verify-config && plusafetch
+```
+
+All four skins are validated by `make skins` (CI-friendly).
+
+### Shell completions
+
+Bash and zsh completions live in [`completions/`](completions/):
+
+```sh
+make completions-install        # installs into $PREFIX/share/{bash-completion,zsh}
+```
+
+or source them directly: `source completions/plusafetch.bash`.
+
 ## What shows up where
 
 **Core modules (all platforms, no subprocesses):** title, os*, kernel, host*, cpu, memory, disk, uptime, packages, shell, terminal, locale, datetime, separator, colors.

@@ -9,7 +9,7 @@ import argparse
 import os
 import pty
 import select
-import subprocess
+import signal
 import sys
 import time
 
@@ -18,9 +18,31 @@ def run(cmd, into, out, settle=1.2, row=30, col=100, kill_after=None):
     master, slave = pty.openpty()
     import fcntl, termios, struct
     fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", row, col, 0, 0))
-    proc = subprocess.Popen(cmd, stdin=slave, stdout=slave, stderr=slave, close_fds=True,
-                            start_new_session=True, env={**os.environ, "TERM": "xterm-256color"})
+    pid = os.fork()
+    if pid == 0:
+        os.close(master)
+        os.setsid()
+        fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+        os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
+        if slave > 2:
+            os.close(slave)
+        env = dict(os.environ); env["TERM"] = "xterm-256color"
+        os.execvpe(cmd[0], cmd, env)
     os.close(slave)
+    class _Proc:
+        """Minimal shim exposing .poll() like subprocess.Popen."""
+        def poll(self):
+            try:
+                wp, status = os.waitpid(pid, os.WNOHANG)
+                return None if wp == 0 else status
+            except ChildProcessError:
+                return 0
+        def terminate(self):
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    proc = _Proc()
     buf = bytearray()
     into_idx = 0
     t0 = time.time()

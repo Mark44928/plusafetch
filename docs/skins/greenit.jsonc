@@ -1,0 +1,29 @@
+// Greenit — phosphor green, bold keys, roomy separator.
+// cp docs/skins/greenit.jsonc ~/.config/plusafetch/config.jsonc
+{
+  "modules": [
+    "title",
+    { "name": "os",       "key": "Distro  " },
+    { "name": "kernel",   "key": "Kernel  " },
+    { "name": "host",     "key": "Host    " },
+    { "name": "cpu",      "key": "CPU     " },
+    { "name": "memory",   "key": "Memory  " },
+    { "name": "disk",     "key": "Disk    " },
+    { "name": "uptime",   "key": "Uptime  " },
+    { "name": "packages", "key": "Packages" },
+    { "name": "shell",    "key": "Shell   " },
+    { "name": "terminal", "key": "Terminal" },
+    { "name": "datetime", "key": "Date    " },
+    "separator",
+    "colors",
+    { "name": "command",  "key": "Today   " }
+  ],
+  "colors": true,
+  "truecolor": true,
+  "keyColor": "#7BD88F",
+  "boldKeys": true,
+  "hideKeys": false,
+  "separatorLength": 44,
+  "command": "date +'%A, %d %B %Y · %H:%M'",
+  "commandKey": "Today"
+}

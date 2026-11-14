@@ -1,0 +1,20 @@
+#compdef plusafetch
+# zsh completion for plusafetch
+_plusafetch() {
+    _arguments -s \
+        '--all[include termux-api extras]' \
+        '--json[JSON dump of detected modules]' \
+        '--format[layout with {placeholders}]:format:' \
+        '--modules[comma-separated module list]:modules:' \
+        '--list-modules[list every registered module]' \
+        '--values-only[print values without the key column]' \
+        '--verify-config[validate the config file]' \
+        '--gen-config[write the default config]' \
+        '--notify[send a Termux notification when done]' \
+        '--no-color[disable colors]' \
+        '--color[always emit colors]' \
+        '--version[show version]' \
+        '--help[show help]' \
+        '*: :_files'
+}
+_plusafetch "$@"
