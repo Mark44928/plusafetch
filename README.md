@@ -31,6 +31,17 @@ cd plusafetch
 ./install.sh                   # apt/dnf/pacman; installs clang + cmake
 ```
 
+The installer uses an fzf component menu when fzf is already available (it
+never installs fzf), records what it writes, backs up replaced files, and
+installs shell completions:
+
+```sh
+./install.sh --prefix ~/.local      # choose a prefix
+./install.sh --no-deps              # never invoke a package manager
+./install.sh --no-completions
+./install.sh --uninstall            # remove recorded files
+```
+
 Or manually:
 
 ```sh
