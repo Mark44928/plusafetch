@@ -58,6 +58,7 @@ plusafetch
 | `plusafetch` | default layout (fast: syscalls + files only) |
 | `plusafetch --all` | adds termux-api modules (Android): battery, sensors, telephony, wifi, clipboard, command, gpu |
 | `plusafetch --json` | JSON dump of detected modules (`null` when a module is Unsupported) |
+| `plusafetch -w [sec]` / `--watch [sec]` | refresh continuously (default 1s, Ctrl-C to stop; not with `--json`) |
 | `plusafetch --format '{os}\n{cpu}\n{memory}'` | template; placeholders `{name}`, slices `{os~0,5}` |
 | `plusafetch --modules os,cpu,battery` | comma-separated module list |
 | `plusafetch --values-only` | print values only (no key column) |

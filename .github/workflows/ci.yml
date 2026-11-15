@@ -33,6 +33,8 @@ jobs:
           ./build/plusafetch --json
           ./build/plusafetch --format '{os} {cpu}' >/dev/null
           ./build/plusafetch --help >/dev/null
+      - name: Installer smoke test
+        run: bash tests/install-smoke.sh
 
   clang-tidy:
     name: clang-tidy

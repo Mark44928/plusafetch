@@ -191,6 +191,7 @@ void printUsage(FILE* out) {
         "  plusafetch --all        Include termux-api extras (battery, sensors,\n"
         "                            telephony, wifi, clipboard, command, gpu)\n"
         "  plusafetch --json       JSON dump of detected modules\n"
+        "  plusafetch -w [sec]     Refresh continuously (default 1s; Ctrl-C)\n"
         "  plusafetch --format FMT Placeholders like {os}, {cpu}, {memory};\n"
         "                            slices: {os~0,5}\n"
         "  plusafetch --modules a,b Comma-separated module list\n"
@@ -231,10 +232,27 @@ int run(int argc, char** argv) {
     bool wantListThemes = false;
     std::string themeName;
     int colorMode = 0; // 0 auto, 1 always, -1 none
+    int watchSeconds = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string_view a{argv[i]};
         if (a == "--json") wantJson = true;
+        else if (a == "--watch" || a == "-w") {
+            watchSeconds = 1;
+            if (i + 1 < argc) {
+                std::string_view next{argv[i + 1]};
+                bool digits = !next.empty() && next.size() <= 5;
+                for (char c : next) if (c < '0' || c > '9') { digits = false; break; }
+                if (digits) { watchSeconds = std::atoi(std::string(next).c_str()); ++i; }
+            }
+        }
+        else if (a.rfind("--watch=", 0) == 0) {
+            std::string_view val = a.substr(8);
+            bool digits = !val.empty() && val.size() <= 5;
+            for (char c : val) if (c < '0' || c > '9') { digits = false; break; }
+            if (!digits) { std::fprintf(stderr, "%s: --watch needs whole seconds\n", kName); return 64; }
+            watchSeconds = std::atoi(std::string(val).c_str());
+        }
         else if (a == "--notify") wantNotify = true;
         else if (a == "--all") wantAll = true;
         else if (a == "--no-color") colorMode = -1;
@@ -255,6 +273,11 @@ int run(int argc, char** argv) {
         else { std::fprintf(stderr, "%s: unknown option '%.*s'\n", kName, (int)a.size(), a.data()); return 64; }
     }
 
+    if (watchSeconds > 3600) { std::fprintf(stderr, "%s: --watch interval is capped at 3600 seconds\n", kName); return 64; }
+    if (watchSeconds > 0 && wantJson) {
+        std::fprintf(stderr, "%s: --watch cannot be combined with --json\n", kName);
+        return 2;
+    }
     if (wantVersion) { std::printf("plusafetch %s\n", kVersion); return 0; }
     if (wantHelp) { printUsage(stdout); return 0; }
     if (wantList) { printListModules(); return 0; }
@@ -460,14 +483,30 @@ int run(int argc, char** argv) {
         return 65;
     }
 
-    g_ctx = &ctx;
+    const bool watchTty = isatty(STDOUT_FILENO) != 0;
+    for (int round = 0; ; ++round) {
+        if (round > 0) ctx.resetDetection();
+        g_ctx = &ctx;
 
-    // ---- Phase 1: parallel detection (independent modules) ----
-    runDetectParallel(ctx, mods);
+        if (watchSeconds > 0) {
+            std::string header;
+            if (watchTty) {
+                header = "\033[H\033[2J";
+                header += "plusafetch watch · ";
+                header += std::to_string(watchSeconds);
+                header += "s · Ctrl-C to exit\n\n";
+            } else if (round > 0) {
+                header = "\n";
+            }
+            if (!header.empty()) writeAll(STDOUT_FILENO, header.data(), header.size());
+        }
 
-    // ---- Phase 2: render ----
-    std::string frame; // built only on the single-write path
-    if (wantJson) {
+        // ---- Phase 1: parallel detection (independent modules) ----
+        runDetectParallel(ctx, mods);
+
+        // ---- Phase 2: render ----
+        std::string frame; // built only on the single-write path
+        if (wantJson) {
         nlohmann::json out = nlohmann::json::object();
         for (const auto* m : mods) {
             nlohmann::json slot(nullptr);
@@ -490,6 +529,10 @@ int run(int argc, char** argv) {
             if (m->printModule) m->printModule(const_cast<FFModuleBaseInfo*>(m));
         }
         writeAll(STDOUT_FILENO, ctx.frame.b.chars, ctx.frame.b.length);
+        }
+
+        if (watchSeconds == 0) break;
+        std::this_thread::sleep_for(std::chrono::seconds(watchSeconds));
     }
 
     if (wantNotify) {

@@ -73,6 +73,17 @@ struct FFContext {
         const char* h = std::getenv("COMPUTERNAME"); // windows-free, but harmless fallback
         if (h && *h) hostName = h;
     }
+
+    void resetDetection() {
+        ffStrbufClear(frame.b);
+        auto unset = [] { return Result<std::string>(std::unexpected(Error{"unsupported"})); };
+        osLine = unset(); kernelLine = unset(); hostLine = unset(); cpuLine = unset();
+        memLine = unset(); swapLine = unset(); loadLine = unset(); diskLine = unset();
+        uptimeLine = unset(); pkgLine = unset(); shellLine = unset(); terminalLine = unset();
+        localeLine = unset(); dateTimeLine = unset(); batteryLine = unset(); brightnessLine = unset();
+        sensorLine = unset(); telephonyLine = unset(); wifiLine = unset(); commandLine = unset();
+        clipboardLine = unset(); gpuLine = unset();
+    }
 };
 
 // Non-owning global for the render phase (single-threaded); never null after main sets it.

@@ -4,6 +4,7 @@ _plusafetch() {
     _arguments -s \
         '--all[include termux-api extras]' \
         '--json[JSON dump of detected modules]' \
+        '(-w --watch)'{-w,--watch}'[refresh every N seconds]:seconds:(1 2 5 10)' \
         '--format[layout with {placeholders}]:format:' \
         '--modules[comma-separated module list]:modules:' \
         '--list-modules[list every registered module]' \

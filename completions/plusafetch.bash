@@ -10,7 +10,7 @@ _plusafetch() {
         --theme)    COMPREPLY=($(compgen -W "greenit bluney catppuccin-mocha dracula gruvbox nord rose-pine solarized tokyo-night mono" -- "$cur")); return ;;
     esac
 
-    local opts="--all --json --format --modules --list-modules --list-themes --theme --values-only
+    local opts="--all --json --watch -w --format --modules --list-modules --list-themes --theme --values-only
         --verify-config --gen-config --notify --no-color --color
         --version --help"
     COMPREPLY=($(compgen -W "$opts" -- "$cur"))
