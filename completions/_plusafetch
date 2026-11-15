@@ -7,6 +7,8 @@ _plusafetch() {
         '--format[layout with {placeholders}]:format:' \
         '--modules[comma-separated module list]:modules:' \
         '--list-modules[list every registered module]' \
+        '--list-themes[list built-in colour themes]' \
+        '--theme[apply a colour theme]:theme:(greenit bluney catppuccin-mocha dracula gruvbox nord rose-pine solarized tokyo-night mono)' \
         '--values-only[print values without the key column]' \
         '--verify-config[validate the config file]' \
         '--gen-config[write the default config]' \

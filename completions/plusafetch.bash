@@ -6,10 +6,11 @@ _plusafetch() {
 
     case "$prev" in
         --format)   COMPREPLY=($(compgen -W "{os} {cpu} {memory} {kernel} {disk} {uptime} {shell} {terminal}" -- "$cur")); return ;;
-        --modules)  COMPREPLY=($(compgen -W "title os kernel host cpu gpu memory disk uptime packages shell terminal datetime locale separator colors command battery brightness sensors telephony wifi clipboard" -- "$cur")); return ;;
+        --modules)  COMPREPLY=($(compgen -W "title os kernel host cpu gpu memory swap loadavg disk uptime packages shell terminal datetime locale separator colors command battery brightness sensors telephony wifi clipboard" -- "$cur")); return ;;
+        --theme)    COMPREPLY=($(compgen -W "greenit bluney catppuccin-mocha dracula gruvbox nord rose-pine solarized tokyo-night mono" -- "$cur")); return ;;
     esac
 
-    local opts="--all --json --format --modules --list-modules --values-only
+    local opts="--all --json --format --modules --list-modules --list-themes --theme --values-only
         --verify-config --gen-config --notify --no-color --color
         --version --help"
     COMPREPLY=($(compgen -W "$opts" -- "$cur"))

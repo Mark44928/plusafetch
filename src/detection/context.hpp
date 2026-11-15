@@ -29,6 +29,8 @@ struct FFContext {
     Result<std::string> hostLine    {std::unexpected(Error{"unsupported"})};
     Result<std::string> cpuLine     {std::unexpected(Error{"unsupported"})};
     Result<std::string> memLine     {std::unexpected(Error{"unsupported"})};
+    Result<std::string> swapLine    {std::unexpected(Error{"unsupported"})};
+    Result<std::string> loadLine    {std::unexpected(Error{"unsupported"})};
     Result<std::string> diskLine    {std::unexpected(Error{"unsupported"})};
     Result<std::string> uptimeLine  {std::unexpected(Error{"unsupported"})};
     Result<std::string> pkgLine     {std::unexpected(Error{"unsupported"})};

@@ -27,6 +27,24 @@ extern const FFModuleBaseInfo kDiskModuleInfo{ "disk", "Disk", "root filesystem 
     [](const FFContext& ctx) -> Result<std::string> { return ctx.diskLine; },
     &printModuleDefault, &jsonResultDefault, &jsonConfigDefault, kDiskFormat };
 
+// ---- Load average ----
+static void detectLoadavgModule(FFContext& ctx) { detectLoadavg(ctx); }
+static const char* const kLoadavgFormat[] = {"loadavg", nullptr};
+extern const FFModuleBaseInfo kLoadavgModuleInfo{ "loadavg", "Load", "1/5/15-minute load average",
+    &initOptionsDefault, &destroyOptionsDefault, nullptr,
+    &detectLoadavgModule,
+    [](const FFContext& ctx) -> Result<std::string> { return ctx.loadLine; },
+    &printModuleDefault, &jsonResultDefault, &jsonConfigDefault, kLoadavgFormat };
+
+// ---- Swap ----
+static void detectSwapModule(FFContext& ctx) { detectSwap(ctx); }
+static const char* const kSwapFormat[] = {"swap", nullptr};
+extern const FFModuleBaseInfo kSwapModuleInfo{ "swap", "Swap", "swap usage (used / total)",
+    &initOptionsDefault, &destroyOptionsDefault, nullptr,
+    &detectSwapModule,
+    [](const FFContext& ctx) -> Result<std::string> { return ctx.swapLine; },
+    &printModuleDefault, &jsonResultDefault, &jsonConfigDefault, kSwapFormat };
+
 // ---- Host ----
 static void detectHostModule(FFContext& ctx) {
 #if defined(__ANDROID__)

@@ -13,6 +13,8 @@ bool fileReadable(std::string_view path);
 // Shared detectors (common_detect.cpp) — POSIX, all platforms
 void detectCpu(FFContext& ctx);
 void detectMemory(FFContext& ctx);
+void detectSwap(FFContext& ctx);
+void detectLoadavg(FFContext& ctx);
 void detectDisk(FFContext& ctx);
 void detectKernel(FFContext& ctx);
 void detectUptime(FFContext& ctx);

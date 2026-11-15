@@ -31,15 +31,52 @@ using namespace plf;
 constexpr const char* kVersion = "0.1.0";
 constexpr const char* kName    = "plusafetch";
 
+struct ThemePreset { const char* name; const char* key; };
+// Named palettes inspired by the fastfetch theme configs and Starship
+// palettes: a preset only sets the key colour; explicit config keyColor wins.
+static constexpr ThemePreset kThemes[] = {
+    {"greenit",          "#7BD88F"},
+    {"bluney",           "#7DBBFF"},
+    {"catppuccin-mocha", "#89B4FA"},
+    {"dracula",          "#BD93F9"},
+    {"gruvbox",          "#FABD2F"},
+    {"nord",             "#88C0D0"},
+    {"rose-pine",        "#C4A7E7"},
+    {"solarized",        "#268BD2"},
+    {"tokyo-night",      "#7AA2F7"},
+    {"mono",             "#FFFFFF"},
+};
+static const ThemePreset* findTheme(const std::string& name) {
+    for (const auto& t : kThemes) if (name == t.name) return &t;
+    return nullptr;
+}
+static bool parseHexColor(const std::string& in, unsigned char& r, unsigned char& g, unsigned char& b) {
+    std::string hex = in;
+    if (!hex.empty() && hex.front() == '#') hex.erase(0, 1);
+    if (hex.size() != 6) return false;
+    auto hx = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    int d[6];
+    for (int i = 0; i < 6; ++i) { d[i] = hx(hex[(size_t)i]); if (d[i] < 0) return false; }
+    r = (unsigned char)(d[0] * 16 + d[1]);
+    g = (unsigned char)(d[2] * 16 + d[3]);
+    b = (unsigned char)(d[4] * 16 + d[5]);
+    return true;
+}
+
 // Default layout: fast — only syscalls/file reads, no subprocesses.
 const char* const kDefaultStructure[] = {
-    "title", "os", "kernel", "host", "cpu", "memory", "disk",
+    "title", "os", "kernel", "host", "cpu", "memory", "swap", "loadavg", "disk",
     "uptime", "packages", "shell", "terminal", "datetime", "separator", "colors",
 };
 
 // --all adds the termux-api-backed & config modules (slow subprocesses).
 const char* const kAllStructure[] = {
-    "title", "os", "kernel", "host", "gpu", "cpu", "memory", "disk",
+    "title", "os", "kernel", "host", "gpu", "cpu", "memory", "swap", "loadavg", "disk",
     "uptime", "packages", "shell", "terminal", "locale", "datetime",
     "battery", "brightness", "sensors", "telephony", "wifi", "clipboard",
     "command",
@@ -159,6 +196,8 @@ void printUsage(FILE* out) {
         "  plusafetch --modules a,b Comma-separated module list\n"
         "                            (default: config or built-in)\n"
         "  plusafetch --list-modules   List every registered module\n"
+        "  plusafetch --list-themes    List built-in colour themes\n"
+        "  plusafetch --theme <name>   Apply a colour theme (key colours)\n"
         "  plusafetch --values-only    Print values only (no key column)\n"
         "  plusafetch --verify-config  Validate $HOME/.config/plusafetch/\n"
         "                            config.jsonc (exit 0 if valid)\n"
@@ -189,6 +228,8 @@ int run(int argc, char** argv) {
     bool formatSet = false;
     std::string formatText;
     std::string modulesCsv;
+    bool wantListThemes = false;
+    std::string themeName;
     int colorMode = 0; // 0 auto, 1 always, -1 none
 
     for (int i = 1; i < argc; ++i) {
@@ -202,6 +243,9 @@ int run(int argc, char** argv) {
         else if (a == "--verify-config") wantVerify = true;
         else if (a == "--gen-config") wantGenConfig = true;
         else if (a == "--list-modules") wantList = true;
+        else if (a == "--list-themes") wantListThemes = true;
+        else if (a == "--theme" && i + 1 < argc) themeName = argv[++i];
+        else if (a.rfind("--theme=", 0) == 0) themeName = std::string(a.substr(8));
         else if (a == "--version" || a == "-v") wantVersion = true;
         else if (a == "--help" || a == "-h") wantHelp = true;
         else if (a == "--format" && i + 1 < argc) { formatText = argv[++i]; formatSet = true; }
@@ -214,6 +258,14 @@ int run(int argc, char** argv) {
     if (wantVersion) { std::printf("plusafetch %s\n", kVersion); return 0; }
     if (wantHelp) { printUsage(stdout); return 0; }
     if (wantList) { printListModules(); return 0; }
+    if (wantListThemes) {
+        for (const auto& t : kThemes) std::printf("%-18s %s\n", t.name, t.key);
+        return 0;
+    }
+    if (!themeName.empty() && !findTheme(themeName)) {
+        std::fprintf(stderr, "%s: unknown theme '%s' (try --list-themes)\n", kName, themeName.c_str());
+        return 2;
+    }
 
     // Signal handlers for SIGINT/SIGTERM: reset to default and exit quietly.
     struct sigaction sa{};
@@ -266,6 +318,7 @@ int run(int argc, char** argv) {
     if (wantValuesOnly) ctx.hideKeys = true;
 
     // Config (before modules so 'command' is available to the Command module)
+    const bool cliTheme = !themeName.empty();
     nlohmann::json cfg = loadConfig();
     if (cfg.contains("command") && cfg["command"].is_string())
         ctx.configCommand = cfg["command"].get<std::string>();
@@ -282,6 +335,17 @@ int run(int argc, char** argv) {
     auto setKeyColor = [&](unsigned char r, unsigned char g, unsigned char b) {
         ctx.keyColorR = r; ctx.keyColorG = g; ctx.keyColorB = b; ctx.keyColorSet = true;
     };
+    if (themeName.empty() && cfg.contains("theme") && cfg["theme"].is_string())
+        themeName = cfg["theme"].get<std::string>();
+    if (!themeName.empty()) {
+        const ThemePreset* hit = findTheme(themeName);
+        if (!hit) {
+            std::fprintf(stderr, "%s: unknown config theme '%s' (try --list-themes)\n", kName, themeName.c_str());
+            return 2;
+        }
+        unsigned char r, g, b;
+        if (parseHexColor(hit->key, r, g, b)) setKeyColor(r, g, b);
+    }
     if (cfg.contains("keyColor")) {
         const auto& kc = cfg["keyColor"];
         if (kc.is_string()) { // "#rrggbb" handled (with or without #)
@@ -305,6 +369,12 @@ int run(int argc, char** argv) {
             setKeyColor(clamp(kc[0].get<double>()), clamp(kc[1].get<double>()), clamp(kc[2].get<double>()));
         } else {
             std::fprintf(stderr, "%s: config 'keyColor' must be \"#rrggbb\" or [r,g,b]\n", kName);
+        }
+    }
+    if (cliTheme) {
+        if (const ThemePreset* hit = findTheme(themeName)) {
+            unsigned char r, g, b;
+            if (parseHexColor(hit->key, r, g, b)) setKeyColor(r, g, b);
         }
     }
 

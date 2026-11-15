@@ -4,6 +4,9 @@
 #include "platform.hpp"
 #include <sys/utsname.h>
 #include <sys/statvfs.h>
+#if defined(__linux__)
+#include <sys/sysinfo.h>
+#endif
 #include <ctime>
 #include <cstdio>
 #include <cstring>
@@ -79,6 +82,57 @@ void detectMemory(FFContext& ctx) {
     std::snprintf(out, sizeof out, "%.1f GiB used / %.1f GiB",
                   used  / 1048576.0, total / 1048576.0);
     ctx.memLine = std::string{out};
+}
+
+// ---- Swap ----
+void detectSwap(FFContext& ctx) {
+    auto mem = readTextFile("/proc/meminfo");
+    if (!mem) { ctx.swapLine = std::unexpected(Error{"meminfo unavailable"}); return; }
+    auto fieldKiB = [&](std::string_view key) -> uint64_t {
+        std::size_t pos = mem->find(key);
+        if (pos == std::string::npos) return 0;
+        auto colon = mem->find(':', pos);
+        if (colon == std::string::npos) return 0;
+        std::size_t begin = mem->find_first_not_of(" \t", colon + 1);
+        if (begin == std::string::npos) return 0;
+        std::size_t stop = mem->find_first_not_of("0123456789", begin);
+        if (stop == std::string::npos) stop = mem->size();
+        return std::strtoull(mem->substr(begin, stop - begin).c_str(), nullptr, 10);
+    };
+    uint64_t total = fieldKiB("SwapTotal:");
+    uint64_t freek = fieldKiB("SwapFree:");
+    if (total == 0) { ctx.swapLine = std::string{"disabled"}; return; }
+    uint64_t used = freek < total ? total - freek : 0;
+    char out[128];
+    std::snprintf(out, sizeof out, "%.1f GiB used / %.1f GiB", used / 1048576.0, total / 1048576.0);
+    ctx.swapLine = std::string{out};
+}
+
+// ---- Load average ----
+void detectLoadavg(FFContext& ctx) {
+    auto s = readTextFile("/proc/loadavg");
+    if (s) {
+        double a = 0, b = 0, c = 0;
+        if (std::sscanf(s->c_str(), "%lf %lf %lf", &a, &b, &c) == 3) {
+            char out[64];
+            std::snprintf(out, sizeof out, "%.2f  %.2f  %.2f", a, b, c);
+            ctx.loadLine = std::string{out};
+            return;
+        }
+    }
+#if defined(__linux__)
+    // Android blocks /proc/loadavg via SELinux, but the sysinfo(2) syscall is
+    // allowed and carries the same fixed-point load averages.
+    struct sysinfo si{};
+    if (sysinfo(&si) == 0) {
+        char out[64];
+        std::snprintf(out, sizeof out, "%.2f  %.2f  %.2f",
+                      si.loads[0] / 65536.0, si.loads[1] / 65536.0, si.loads[2] / 65536.0);
+        ctx.loadLine = std::string{out};
+        return;
+    }
+#endif
+    ctx.loadLine = std::unexpected(Error{"loadavg unavailable"});
 }
 
 // ---- Disk ----

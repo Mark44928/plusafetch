@@ -101,6 +101,26 @@ plusafetch --verify-config && plusafetch
 
 All four skins are validated by `make skins` (CI-friendly).
 
+### Colour themes
+
+Built-in presets set the key colour without a config rewrite (inspired by the
+fastfetch theme configs and Starship palettes):
+
+```bash
+plusafetch --list-themes     # greenit, bluney, catppuccin-mocha, dracula,
+                             # gruvbox, nord, rose-pine, solarized, tokyo-night, mono
+plusafetch --theme bluney    # keys in #7DBBFF
+```
+
+Or keep it in the config:
+
+```jsonc
+{ "theme": "gruvbox", "modules": ["os", "cpu", "memory"] }
+```
+
+Precedence: `--theme` beats a config `theme`, and an explicit `keyColor` in the
+config beats a config `theme` (custom colours always win over presets).
+
 ### Shell completions
 
 Bash and zsh completions live in [`completions/`](completions/):
@@ -142,6 +162,37 @@ or source them directly: `source completions/plusafetch.bash`.
 Default layout does **zero subprocesses** — everything is a `uname()`/`statvfs()`/bounded file read (plus one `opendir`-free dpkg parse of a few hundred KiB) — and detection fans out over `std::jthread`. On an unrooted MediaTek Helio P22, median wall time from process start to single `write()` is **≈23 ms** (measured 22–30 ms over 30 runs). Independent modules (CPU, Memory, Disk, Battery…) each write only their own `FFContext` slot before the render phase joins.
 
 > The <15 ms aspiration is not fully met including process startup on this device class; the detection phase itself is sub-millisecond. `--all` (Android) spawns long-lived termux-api subprocesses and runs them in parallel — total ≈0.5 s, by design, and the default path never pays for them.
+
+### Measured vs fastfetch
+
+Same device and shell, 20 runs after one warm-up, stdout discarded
+(Termux / Android 12, MediaTek MT6762, fastfetch 2.71.0):
+
+| Run | median | min |
+|---|---:|---:|
+| `plusafetch` (default layout) | **23.5 ms** | 20.0 ms |
+| `fastfetch --pipe` (this device's user config) | 716.3 ms | 625.8 ms |
+| `fastfetch -c none --pipe` (pure defaults, no user config) | 461.1 ms | 403.6 ms |
+| `fastfetch -c none --pipe --logo none --structure title:os:kernel:host:cpu:memory:disk:uptime:packages:shell:terminal:datetime` | 346.4 ms | 277.5 ms |
+
+The last fastfetch row is the fairer comparison: it matches the eleven
+modules shared with Plusafetch's default layout and disables the logo. The
+pure-defaults row (`-c none`) still runs fastfetch's full 27-row layout, so
+the 19× gap there is module count as much as startup cost.
+Plusafetch is ~15× faster here because the default path spawns no
+subprocesses and has a small fixed module set.
+
+| | Plusafetch | fastfetch |
+|---|---|---|
+| Language / binary | C++23 · 396 KB | C · 2.0 MB |
+| Modules | 24 | 100+ |
+| Logo | none, by design | ASCII/image logo |
+| Platforms | Termux/Android, Linux, macOS | Linux, macOS, Windows, BSD… |
+| Themes | 10 built-in `--theme` presets | theme = config file |
+| Default-path subprocesses | none | varies by module |
+
+fastfetch is the feature-complete choice; Plusafetch optimises for a tiny,
+subprocess-free Android/Termux default path.
 
 ## Constraints met / deliberate exclusions
 
