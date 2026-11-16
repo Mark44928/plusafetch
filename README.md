@@ -10,6 +10,12 @@ Fastfetch-style module registry, zero-allocation string buffers, parallel detect
 
 ![Plusafetch — system fetch on Android 12 (Termux)](docs/screenshot.png)
 
+More terminal captures:
+
+| `--all` | `--doctor` | `--list-themes` |
+|---|---|---|
+| ![Plusafetch --all](docs/screenshot-all.png) | ![Plusafetch doctor](docs/screenshot-doctor.png) | ![Plusafetch themes](docs/screenshot-themes.png) |
+
 Rendered with [`scripts/ansi2png.py`](scripts/ansi2png.py), a tiny terminal-emulator → PNG renderer (numpy + Pillow) that turns captured ANSI output into a pixel-perfect screenshot — no browser required. Capture with `plusafetch --color > out.ansi`, render with `python3 scripts/ansi2png.py out.ansi screenshot.png`.
 
 ## Build

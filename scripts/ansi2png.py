@@ -203,6 +203,7 @@ class Screen:
 
 def lex_events(raw: bytes):
     raw = _OSC.sub(b"", raw)
+    raw = _ESC.sub(b"", raw)
     pos = 0
     out = []
     for m in _CSI.finditer(raw):
