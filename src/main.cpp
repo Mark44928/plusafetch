@@ -23,12 +23,13 @@
 #include <sys/wait.h>
 #include <cctype>
 #include <cerrno>
+#include <cmath>
 
 namespace {
 
 using namespace plf;
 
-constexpr const char* kVersion = "0.1.0";
+constexpr const char* kVersion = "0.2.0";
 constexpr const char* kName    = "plusafetch";
 
 struct ThemePreset { const char* name; const char* key; };
@@ -50,6 +51,17 @@ static const ThemePreset* findTheme(const std::string& name) {
     for (const auto& t : kThemes) if (name == t.name) return &t;
     return nullptr;
 }
+static bool wholeSeconds(std::string_view s, int& out) {
+    if (s.empty() || s.size() > 5) return false;
+    int value = 0;
+    for (char c : s) {
+        if (c < '0' || c > '9') return false;
+        value = value * 10 + (c - '0');
+    }
+    out = value;
+    return true;
+}
+
 static bool parseHexColor(const std::string& in, unsigned char& r, unsigned char& g, unsigned char& b) {
     std::string hex = in;
     if (!hex.empty() && hex.front() == '#') hex.erase(0, 1);
@@ -192,6 +204,9 @@ void printUsage(FILE* out) {
         "                            telephony, wifi, clipboard, command, gpu)\n"
         "  plusafetch --json       JSON dump of detected modules\n"
         "  plusafetch -w [sec]     Refresh continuously (default 1s; Ctrl-C)\n"
+        "  plusafetch --alert RULE      e.g. mem>90, load>8, battery<20\n"
+        "  plusafetch --check-alerts    one-shot check; exit 1 on a hit\n"
+        "  plusafetch --alert-hook CMD  shell command to run on an alert\n"
         "  plusafetch --format FMT Placeholders like {os}, {cpu}, {memory};\n"
         "                            slices: {os~0,5}\n"
         "  plusafetch --modules a,b Comma-separated module list\n"
@@ -202,6 +217,7 @@ void printUsage(FILE* out) {
         "  plusafetch --values-only    Print values only (no key column)\n"
         "  plusafetch --verify-config  Validate $HOME/.config/plusafetch/\n"
         "                            config.jsonc (exit 0 if valid)\n"
+        "  plusafetch --doctor       Diagnose config, theme, color and modules\n"
         "  plusafetch --gen-config     Write default config to\n"
         "                            $HOME/.config/plusafetch/config.jsonc\n"
         "  plusafetch --notify         Send a Termux notification when done\n"
@@ -224,8 +240,154 @@ void printListModules() {
     }
 }
 
+int printDoctor() {
+    bool bad = false;
+    const std::string path = configPath();
+    std::printf("plusafetch doctor\n");
+    std::printf("  version     %s\n", kVersion);
+
+    nlohmann::json cfg = nlohmann::json::object();
+    auto raw = readTextFile(path, 1u << 20);
+    if (!raw) {
+        std::printf("  config      %s (missing — defaults used)\n", path.c_str());
+    } else {
+        std::string stripped = stripTrailingCommas(stripJsonComments(*raw));
+        cfg = nlohmann::json::parse(stripped, nullptr, /*allow_exceptions=*/false);
+        if (cfg.is_discarded() || !cfg.is_object()) {
+            std::printf("  config      %s (INVALID JSONC)\n", path.c_str());
+            cfg = nlohmann::json::object();
+            bad = true;
+        } else {
+            std::printf("  config      %s (valid, %zu key%s)\n", path.c_str(), cfg.size(),
+                        cfg.size() == 1 ? "" : "s");
+        }
+    }
+
+    std::string themeName = "greenit (default)";
+    if (cfg.contains("theme") && cfg["theme"].is_string()) {
+        const std::string wanted = cfg["theme"].get<std::string>();
+        if (findTheme(wanted)) themeName = wanted;
+        else { std::printf("  theme       %s (unknown; greenit will be used)\n", wanted.c_str()); bad = true; }
+    }
+    if (cfg.contains("keyColor")) {
+        std::printf("  theme       %s, custom keyColor\n", themeName.c_str());
+    } else {
+        const ThemePreset* hit = findTheme(themeName);
+        std::printf("  theme       %s%s%s\n", themeName.c_str(), hit ? " " : "", hit ? hit->key : "");
+    }
+
+    const char* colorterm = std::getenv("COLORTERM");
+    const char* term = std::getenv("TERM");
+    const char* color = (colorterm && (std::strstr(colorterm, "truecolor") || std::strstr(colorterm, "24bit")))
+                            ? "truecolor"
+                            : (term && std::strcmp(term, "dumb") != 0) ? "ANSI" : "off";
+    std::printf("  color       %s\n", color);
+
+    const size_t defaultCount = sizeof(kDefaultStructure) / sizeof(kDefaultStructure[0]);
+    const size_t allCount = sizeof(kAllStructure) / sizeof(kAllStructure[0]);
+    std::printf("  modules     %zu registered · %zu default · %zu with --all\n",
+                allModules().size(), defaultCount, allCount);
+
+    const char* prefix = std::getenv("PREFIX");
+    const std::string termuxApi = std::string(prefix ? prefix : "/usr") + "/bin/termux-battery-status";
+    std::printf("  termux-api  %s\n", access(termuxApi.c_str(), X_OK) == 0 ? "available" : "not found");
+    std::printf("  platform    %s\n", std::getenv("TERMUX_VERSION") ? "Termux/Android" : "non-Termux");
+    const char* tmp = std::getenv("TMPDIR");
+    std::printf("  TMPDIR      %s\n", tmp && *tmp ? tmp : "(unset)");
+
+    if (bad) std::printf("  result      issues found\n");
+    else std::printf("  result      OK\n");
+    return bad ? 65 : 0;
+}
+
+struct AlertRule {
+    std::string metric;
+    char op = '>';
+    double threshold = 0;
+};
+
+struct AlertConfig {
+    std::vector<AlertRule> rules;
+    std::string hook;
+    int cooldownSec = 60;
+};
+
+static std::string trimText(std::string s) {
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
+    return s;
+}
+
+static std::optional<AlertRule> parseAlertRule(const std::string& text) {
+    const std::string s = trimText(text);
+    const auto pos = s.find_first_of("<>");
+    if (pos == std::string::npos) return std::nullopt;
+    AlertRule r;
+    r.metric = trimText(s.substr(0, pos));
+    r.op = s[pos];
+    const std::string number = trimText(s.substr(pos + 1));
+    char* end = nullptr;
+    r.threshold = std::strtod(number.c_str(), &end);
+    if (r.metric.empty() || number.empty() || !end || *end != '\0') return std::nullopt;
+    if (!std::isfinite(r.threshold)) return std::nullopt;
+    for (char& c : r.metric) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const std::string_view kMetrics[] = { "mem", "memory", "ram", "swap", "disk", "load", "battery", "batt" };
+    bool known = false;
+    for (const auto& m : kMetrics) if (r.metric == m) { known = true; break; }
+    if (!known) return std::nullopt;
+    return r;
+}
+
+static double alertPercent(const Result<std::string>& line) {
+    if (!line) return -1;
+    std::istringstream in(*line);
+    double used = 0, total = 0;
+    std::string unit1, word, unit2;
+    char slash = 0;
+    if (!(in >> used >> unit1 >> word >> slash >> total >> unit2) || slash != '/' || total <= 0) return -1;
+    auto factor = [](std::string u) {
+        if (u == "GiB") return 1024.0;
+        if (u == "MiB") return 1.0;
+        if (u == "KiB") return 1.0 / 1024.0;
+        if (u == "TiB") return 1024.0 * 1024.0;
+        return 1.0;
+    };
+    const double f1 = factor(unit1), f2 = factor(unit2);
+    if (f2 <= 0) return -1;
+    return used * f1 / (total * f2) * 100.0;
+}
+
+static double alertMetric(const FFContext& ctx, const std::string& metric) {
+    if (metric == "mem" || metric == "memory" || metric == "ram") return alertPercent(ctx.memLine);
+    if (metric == "swap") return alertPercent(ctx.swapLine);
+    if (metric == "disk") return alertPercent(ctx.diskLine);
+    if (metric == "load") {
+        if (!ctx.loadLine) return -1;
+        return std::strtod(ctx.loadLine->c_str(), nullptr);
+    }
+    if (metric == "battery" || metric == "batt") {
+        if (!ctx.batteryLine) return -1;
+        return std::strtod(ctx.batteryLine->c_str(), nullptr);
+    }
+    return -1;
+}
+
+static std::vector<std::string> alertHits(const FFContext& ctx, const AlertConfig& cfg) {
+    std::vector<std::string> hits;
+    for (const auto& rule : cfg.rules) {
+        const double value = alertMetric(ctx, rule.metric);
+        if (value < 0) continue;
+        const bool hit = rule.op == '>' ? value > rule.threshold : value < rule.threshold;
+        if (!hit) continue;
+        char buf[160];
+        std::snprintf(buf, sizeof buf, "ALERT %s %.1f %c %.1f", rule.metric.c_str(), value, rule.op, rule.threshold);
+        hits.emplace_back(buf);
+    }
+    return hits;
+}
+
 int run(int argc, char** argv) {
-    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false;
+    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false, wantDoctor = false;
     bool formatSet = false;
     std::string formatText;
     std::string modulesCsv;
@@ -233,6 +395,10 @@ int run(int argc, char** argv) {
     std::string themeName;
     int colorMode = 0; // 0 auto, 1 always, -1 none
     int watchSeconds = 0;
+    bool wantCheckAlerts = false;
+    std::vector<std::string> cliAlerts;
+    std::string cliAlertHook;
+    int cliAlertCooldown = -1;
 
     for (int i = 1; i < argc; ++i) {
         std::string_view a{argv[i]};
@@ -254,11 +420,29 @@ int run(int argc, char** argv) {
             watchSeconds = std::atoi(std::string(val).c_str());
         }
         else if (a == "--notify") wantNotify = true;
+        else if (a == "--check-alerts") wantCheckAlerts = true;
+        else if (a == "--alert" && i + 1 < argc) cliAlerts.emplace_back(argv[++i]);
+        else if (a.rfind("--alert=", 0) == 0) cliAlerts.emplace_back(a.substr(8));
+        else if (a == "--alert-hook" && i + 1 < argc) cliAlertHook = argv[++i];
+        else if (a.rfind("--alert-hook=", 0) == 0) cliAlertHook = std::string(a.substr(13));
+        else if (a == "--alert-cooldown" && i + 1 < argc) {
+            if (!wholeSeconds(argv[++i], cliAlertCooldown)) {
+                std::fprintf(stderr, "%s: --alert-cooldown needs whole seconds (0-99999)\n", kName);
+                return 64;
+            }
+        }
+        else if (a.rfind("--alert-cooldown=", 0) == 0) {
+            if (!wholeSeconds(a.substr(17), cliAlertCooldown)) {
+                std::fprintf(stderr, "%s: --alert-cooldown needs whole seconds (0-99999)\n", kName);
+                return 64;
+            }
+        }
         else if (a == "--all") wantAll = true;
         else if (a == "--no-color") colorMode = -1;
         else if (a == "--color") colorMode = 1;
         else if (a == "--values-only") wantValuesOnly = true;
         else if (a == "--verify-config") wantVerify = true;
+        else if (a == "--doctor") wantDoctor = true;
         else if (a == "--gen-config") wantGenConfig = true;
         else if (a == "--list-modules") wantList = true;
         else if (a == "--list-themes") wantListThemes = true;
@@ -285,6 +469,7 @@ int run(int argc, char** argv) {
         for (const auto& t : kThemes) std::printf("%-18s %s\n", t.name, t.key);
         return 0;
     }
+    if (wantDoctor) return printDoctor();
     if (!themeName.empty() && !findTheme(themeName)) {
         std::fprintf(stderr, "%s: unknown theme '%s' (try --list-themes)\n", kName, themeName.c_str());
         return 2;
@@ -401,6 +586,47 @@ int run(int argc, char** argv) {
         }
     }
 
+    AlertConfig alertCfg;
+    if (cfg.contains("alerts")) {
+        if (!cfg["alerts"].is_array()) {
+            std::fprintf(stderr, "%s: config 'alerts' must be an array of rules\n", kName);
+        } else {
+            for (const auto& item : cfg["alerts"]) {
+                if (!item.is_string()) continue;
+                auto rule = parseAlertRule(item.get<std::string>());
+                if (!rule) { std::fprintf(stderr, "%s: invalid config alert rule '%s'\n", kName, item.get<std::string>().c_str()); return 64; }
+                alertCfg.rules.push_back(*rule);
+            }
+        }
+    }
+    if (cfg.contains("alertHook") && cfg["alertHook"].is_string()) alertCfg.hook = cfg["alertHook"].get<std::string>();
+    if (cfg.contains("alertCooldown") && cfg["alertCooldown"].is_number()) {
+        double d = cfg["alertCooldown"].get<double>();
+        alertCfg.cooldownSec = d < 0 ? 0 : d > 86400 ? 86400 : static_cast<int>(d);
+    }
+    for (const auto& text : cliAlerts) {
+        auto rule = parseAlertRule(text);
+        if (!rule) {
+            std::fprintf(stderr, "%s: invalid alert rule '%s' (use metric>value or metric<value)\n", kName, text.c_str());
+            return 64;
+        }
+        alertCfg.rules.push_back(*rule);
+    }
+    if (!cliAlertHook.empty()) alertCfg.hook = cliAlertHook;
+    if (cliAlertCooldown >= 0) alertCfg.cooldownSec = cliAlertCooldown;
+    if (wantCheckAlerts && watchSeconds > 0) {
+        std::fprintf(stderr, "%s: --check-alerts cannot be combined with --watch\n", kName);
+        return 64;
+    }
+    const bool checkAlerts = wantCheckAlerts || (!cliAlerts.empty() && watchSeconds == 0);
+    auto runAlertHook = [&]() {
+        if (alertCfg.hook.empty()) return;
+        const char* hookArgv[] = { "sh", "-c", alertCfg.hook.c_str(), nullptr };
+        auto r = execCapture(hookArgv, 1u << 16);
+        (void)r;
+    };
+    auto lastAlert = std::chrono::steady_clock::time_point{};
+
     // Color resolution: --color / --no-color override config & env.
     const char* colorterm = std::getenv("COLORTERM");
     bool envTruecolor = colorterm && (std::string_view{colorterm}.find("truecolor") != std::string_view::npos
@@ -425,6 +651,9 @@ int run(int argc, char** argv) {
             "  // per-module key rename: entries may be { \"name\": \"cpu\", \"key\": \"Processor\" }\n"
             "  // \"command\": \"date\",    // Command module: run this sh -c string, prints the first line\n"
             "  // \"commandKey\": \"Uptime\" // the label to render for the Command module\n"
+            "  // \"alerts\": [\"mem>90\", \"load>8\", \"battery<20\"],\n"
+            "  // \"alertHook\": \"termux-notification -t Plusafetch -c 'threshold hit'\",\n"
+            "  // \"alertCooldown\": 300,    // seconds between hook fires while still breached\n"
             "}\n";
         if (writeConfigAtomic(configPath(), tmpl)) {
             std::fprintf(stderr, "wrote %s\n", configPath().c_str());
@@ -483,6 +712,29 @@ int run(int argc, char** argv) {
         return 65;
     }
 
+    // Alerts read their source modules out of the context; make sure those are
+    // detected even when the user did not display them. They are detected on a
+    // separate list so the render layout above stays exactly what was asked.
+    std::vector<const FFModuleBaseInfo*> detectMods = mods;
+    {
+        auto hasModule = [&](const char* name) {
+            for (const auto* m : detectMods) if (std::string_view{m->name} == name) return true;
+            return false;
+        };
+        auto ensureModule = [&](const char* name) {
+            if (hasModule(name)) return;
+            if (auto* m = findModule(name)) detectMods.push_back(m);
+        };
+        for (const auto& rule : alertCfg.rules) {
+            const std::string& metric = rule.metric;
+            if (metric == "mem" || metric == "memory" || metric == "ram") ensureModule("memory");
+            else if (metric == "swap") ensureModule("swap");
+            else if (metric == "disk") ensureModule("disk");
+            else if (metric == "load") ensureModule("loadavg");
+            else if (metric == "battery" || metric == "batt") ensureModule("battery");
+        }
+    }
+
     const bool watchTty = isatty(STDOUT_FILENO) != 0;
     for (int round = 0; ; ++round) {
         if (round > 0) ctx.resetDetection();
@@ -502,7 +754,23 @@ int run(int argc, char** argv) {
         }
 
         // ---- Phase 1: parallel detection (independent modules) ----
-        runDetectParallel(ctx, mods);
+        runDetectParallel(ctx, detectMods);
+
+        const auto hits = alertHits(ctx, alertCfg);
+        if (checkAlerts) {
+            for (const auto& hit : hits) std::fprintf(stdout, "%s\n", hit.c_str());
+            if (!hits.empty()) runAlertHook();
+            return hits.empty() ? 0 : 1;
+        }
+        if (watchSeconds > 0 && !hits.empty()) {
+            const auto now = std::chrono::steady_clock::now();
+            const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastAlert).count();
+            if (elapsed >= alertCfg.cooldownSec) {
+                for (const auto& hit : hits) std::fprintf(stderr, "%s\n", hit.c_str());
+                runAlertHook();
+                lastAlert = now;
+            }
+        }
 
         // ---- Phase 2: render ----
         std::string frame; // built only on the single-write path

@@ -119,9 +119,14 @@ if [ "$UNINSTALL" = "1" ]; then
     fi
     removed=0; kept=0; tmp="$MANIFEST.$$"; tmp_old="$tmp.old"
     cat "$MANIFEST" > "$tmp_old"
-    while IFS=$'\t' read -r path old_hash; do
+    # Remove in reverse install order: a recorded symlink (the plusfet alias)
+    # hashes by following to its target, which may itself be recorded earlier
+    # in the manifest. Deleting the target first would break that verification.
+    mapfile -t mlines < "$tmp_old"
+    for (( i=${#mlines[@]} - 1; i >= 0; i-- )); do
+        IFS=$'\t' read -r path old_hash <<< "${mlines[i]}"
         [ -n "$path" ] || continue
-        [ -e "$path" ] || continue
+        [ -e "$path" ] || [ -L "$path" ] || continue
         if [ "$FORCE" = "0" ] && [ "$(hash_file "$path")" != "$old_hash" ]; then
             warn "keeping modified file: $path (use --force to remove)"
             printf '%s\t%s\n' "$path" "$old_hash" >> "$tmp"
@@ -134,7 +139,7 @@ if [ "$UNINSTALL" = "1" ]; then
             printf '  removed: %s\n' "$path"
         fi
         removed=$((removed + 1))
-    done < "$tmp_old"
+    done
     if [ "$DRY" = "0" ]; then
         if [ "$kept" -eq 0 ]; then rm -f "$MANIFEST"; rmdir "$STATE_DIR" 2>/dev/null || true
         else mv -f "$tmp" "$MANIFEST"; fi
@@ -150,7 +155,9 @@ if [ "$DRY" = "1" ]; then
     [ "$NO_COMPLETIONS" = "1" ] || {
         install_file "$REPO_DIR/completions/plusafetch.bash" "$SHARE/bash-completion/completions/plusafetch"
         install_file "$REPO_DIR/completions/_plusafetch" "$SHARE/zsh/site-functions/_plusafetch"
+        install_file "$REPO_DIR/completions/_plusafetch" "$SHARE/zsh/site-functions/_plusfet"
     }
+    printf '  would link %s -> %s\n' "$BIN_DIR/plusfet" "$TARGET"
     exit 0
 fi
 
@@ -199,7 +206,19 @@ cmake --build "$BUILD_DIR" -j "$JOBS"
 
 install_file "$BUILD_DIR/plusafetch" "$TARGET"
 if [ "$COMP_BASH" = "1" ]; then install_file "$REPO_DIR/completions/plusafetch.bash" "$SHARE/bash-completion/completions/plusafetch"; fi
-if [ "$COMP_ZSH" = "1" ]; then install_file "$REPO_DIR/completions/_plusafetch" "$SHARE/zsh/site-functions/_plusafetch"; fi
+if [ "$COMP_ZSH" = "1" ]; then
+    install_file "$REPO_DIR/completions/_plusafetch" "$SHARE/zsh/site-functions/_plusafetch"
+    install_file "$REPO_DIR/completions/_plusafetch" "$SHARE/zsh/site-functions/_plusfet"
+fi
+ALIAS="$BIN_DIR/plusfet"
+if [ -e "$ALIAS" ] && [ ! -L "$ALIAS" ]; then
+    bak="$ALIAS.bak-$(date +%Y%m%d-%H%M%S)-$$"
+    cp -p "$ALIAS" "$bak"
+    printf '  backup: %s\n' "$bak"
+fi
+ln -sfn plusafetch "$ALIAS"
+manifest_upsert "$ALIAS"
+printf '  linked: %s -> plusafetch\n' "$ALIAS"
 
 if "$TARGET" --version >/dev/null 2>&1; then
     info "installed: $("$TARGET" --version 2>/dev/null | head -n1)"

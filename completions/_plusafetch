@@ -1,4 +1,4 @@
-#compdef plusafetch
+#compdef plusafetch plusfet
 # zsh completion for plusafetch
 _plusafetch() {
     _arguments -s \
@@ -10,8 +10,13 @@ _plusafetch() {
         '--list-modules[list every registered module]' \
         '--list-themes[list built-in colour themes]' \
         '--theme[apply a colour theme]:theme:(greenit bluney catppuccin-mocha dracula gruvbox nord rose-pine solarized tokyo-night mono)' \
+        '--alert[alert rule, e.g. mem>90]:rule:(mem>80 mem>90 swap>80 disk>90 load>4 load>8 battery<20 battery<10)' \
+        '--alert-hook[shell command to run on an alert]:command:_files' \
+        '--alert-cooldown[seconds between hook fires]:seconds:(30 60 120 300 600)' \
+        '--check-alerts[one-shot alert check]' \
         '--values-only[print values without the key column]' \
         '--verify-config[validate the config file]' \
+        '--doctor[diagnose config, theme, color and modules]' \
         '--gen-config[write the default config]' \
         '--notify[send a Termux notification when done]' \
         '--no-color[disable colors]' \

@@ -4,7 +4,7 @@ A modular **C++23** system fetch tool for **Termux (Android, unrooted)** with a 
 Fastfetch-style module registry, zero-allocation string buffers, parallel detection, single-write output.
 **No logo. Ever.** Text and data only.
 
-> Status: v0.1.0 · text-only · MIT
+> Status: v0.2.0 · text-only · MIT
 
 ## Example
 
@@ -33,7 +33,7 @@ cd plusafetch
 
 The installer uses an fzf component menu when fzf is already available (it
 never installs fzf), records what it writes, backs up replaced files, and
-installs shell completions:
+installs shell completions plus a `plusfet` symlink to `plusafetch`:
 
 ```sh
 ./install.sh --prefix ~/.local      # choose a prefix
@@ -59,10 +59,16 @@ plusafetch
 | `plusafetch --all` | adds termux-api modules (Android): battery, sensors, telephony, wifi, clipboard, command, gpu |
 | `plusafetch --json` | JSON dump of detected modules (`null` when a module is Unsupported) |
 | `plusafetch -w [sec]` / `--watch [sec]` | refresh continuously (default 1s, Ctrl-C to stop; not with `--json`) |
+| `plusfet` | short alias — installed as a `plusfet` symlink to `plusafetch` |
+| `plusafetch --alert RULE` | alert rule, e.g. `mem>90`, `load>8`, `battery<20`; repeatable |
+| `plusafetch --alert-hook 'CMD'` | run `sh -c CMD` when an alert fires (also `alertHook` in config) |
+| `plusafetch --alert-cooldown 300` | minimum seconds between hook fires (default 60) |
+| `plusafetch --check-alerts` | one-shot check; exit 0 when clear, 1 on a hit (cron-friendly) |
 | `plusafetch --format '{os}\n{cpu}\n{memory}'` | template; placeholders `{name}`, slices `{os~0,5}` |
 | `plusafetch --modules os,cpu,battery` | comma-separated module list |
 | `plusafetch --values-only` | print values only (no key column) |
 | `plusafetch --verify-config` | validate config.jsonc (exit 0 OK / 65 invalid) |
+| `plusafetch --doctor` | report config validity, theme, color mode, module counts, termux-api and TMPDIR |
 | `plusafetch --gen-config` | write JSONC config (atomic, see below) |
 | `plusafetch --list-modules` | list every registered module |
 | `plusafetch --notify` | send a Termux notification when done (Android only) |
@@ -94,6 +100,34 @@ JSONC with comments (stripped before strict parsing). `$XDG_CONFIG_HOME` is hono
   //"commandKey": "Uptime" // label for the Command module
 }
 ```
+
+### Doctor
+
+`plusafetch --doctor` is the quick environment check: it reports whether the
+config exists and parses, which theme/key colour will win, the active colour
+mode, registered/default/`--all` module counts, termux-api availability, the
+detected platform and `TMPDIR`. It exits 65 when the config or theme is invalid.
+
+### Alerts
+
+Supported metrics: `mem` (also `memory`, `ram`), `swap`, `disk` — percent of capacity used; `load` — first load average; `battery` (also `batt`) — percent. Operators are `>` and `<`.
+
+```sh
+plusafetch --watch --alert mem>85 --alert-hook 'termux-notification -t Plusafetch -c "Memory over 85%"'
+plusafetch --check-alerts --alert disk>90
+```
+
+Rules fire every `--alert-cooldown` seconds (default 60) while still breached, not just on the first crossing. `--check-alerts` is implied when `--alert` is given without `--watch`, and exits 1 on a hit so cron jobs can react.
+
+```jsonc
+{
+  // "alerts": ["mem>85", "disk>90", "battery<20", "load>8"],
+  // "alertHook": "termux-notification -t Plusafetch -c \"threshold hit\"",
+  // "alertCooldown": 300
+}
+```
+
+The hook is executed via `sh -c`; only use commands you control.
 
 ### Ricer skins
 
@@ -226,9 +260,9 @@ subprocess-free Android/Termux default path.
 Tiny, dependency-free tools from the same family:
 
 - [Plusalator](https://github.com/Mark44928/Plusalator) — C++17 calculator REPL — Qalculate-flavored, ghost autosuggest, 18 themes
-- [GrubBlastersHTML](https://github.com/Mark44928/GrubBlastersHTML) — Worms-style artillery in one HTML file — 70 weapons, fully destructible terrain
+- [GrubBlastersHTML](https://github.com/Mark44928/GrubBlastersHTML) — Turn-based artillery in one HTML file — 72 weapons, fully destructible terrain
 - [SnakTUI](https://github.com/Mark44928/SnakTUI) — modern Snake for your terminal — Textual + Python
-- [Easy-Termux-Package-Manager](https://github.com/Mark44928/Easy-Termux-Package-Manager) — fzf-driven package manager for Termux — snapshots, audit, 183 tests
+- [Easy-Termux-Package-Manager](https://github.com/Mark44928/Easy-Termux-Package-Manager) — fzf-driven package manager for Termux — snapshots, audit, 186 tests
 - [NoNameOS](https://github.com/Mark44928/NoNameOS) — OS simulation in a single C++17 file — virtual FS, real shell
 - [Greenit](https://github.com/Mark44928/Greenit) — green-injected theme family — dark + light, single palette.json
 - [CalculaHTML](https://github.com/Mark44928/CalculaHTML) — static HTML calculator — 15 themes + System mode, zero deps

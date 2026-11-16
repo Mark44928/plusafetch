@@ -38,7 +38,9 @@ clean:
 install: $(BIN)
 	install -d "$(DESTDIR)$(PREFIX)/bin"
 	install -m 0755 $(BIN) "$(DESTDIR)$(PREFIX)/bin/$(BIN)"
-	@echo "installed $(BIN) -> $(DESTDIR)$(PREFIX)/bin/$(BIN)"
+	@if [ -e "$(DESTDIR)$(PREFIX)/bin/plusfet" ] && [ ! -L "$(DESTDIR)$(PREFIX)/bin/plusfet" ]; then cp -p "$(DESTDIR)$(PREFIX)/bin/plusfet" "$(DESTDIR)$(PREFIX)/bin/plusfet.bak-$$$$"; fi
+	ln -sfn $(BIN) "$(DESTDIR)$(PREFIX)/bin/plusfet"
+	@echo "installed $(BIN) -> $(DESTDIR)$(PREFIX)/bin/$(BIN) (alias: plusfet)"
 
 run: install
 	$(DESTDIR)$(PREFIX)/bin/$(BIN) --version
@@ -49,6 +51,8 @@ check: $(BIN)
 	./$(BIN) --json
 	./$(BIN) --format '{os} :: {cpu} :: {memory} :: {kernel~0,7}'
 	./$(BIN) --verify-config || true
+	./$(BIN) --doctor
+	@bash tests/alerts-smoke.sh
 
 # Validate every shipped ricer skin against the real config parser.
 skins: $(BIN)
@@ -62,3 +66,4 @@ completions-install:
 	install -m 0644 completions/plusafetch.bash "$(DESTDIR)$(PREFIX)/share/bash-completion/completions/plusafetch"
 	install -d "$(DESTDIR)$(PREFIX)/share/zsh/site-functions"
 	install -m 0644 completions/_plusafetch "$(DESTDIR)$(PREFIX)/share/zsh/site-functions/_plusafetch"
+	install -m 0644 completions/_plusafetch "$(DESTDIR)$(PREFIX)/share/zsh/site-functions/_plusfet"
