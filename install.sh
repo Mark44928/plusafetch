@@ -122,9 +122,14 @@ if [ "$UNINSTALL" = "1" ]; then
     # Remove in reverse install order: a recorded symlink (the plusfet alias)
     # hashes by following to its target, which may itself be recorded earlier
     # in the manifest. Deleting the target first would break that verification.
-    mapfile -t mlines < "$tmp_old"
-    for (( i=${#mlines[@]} - 1; i >= 0; i-- )); do
-        IFS=$'\t' read -r path old_hash <<< "${mlines[i]}"
+    mpaths=(); mhashes=(); mcount=0
+    while IFS=$'\t' read -r path old_hash; do
+        [ -n "$path" ] || continue
+        mpaths[mcount]="$path"; mhashes[mcount]="$old_hash"
+        mcount=$((mcount + 1))
+    done < "$tmp_old"
+    for (( i=mcount - 1; i >= 0; i-- )); do
+        path="${mpaths[i]}"; old_hash="${mhashes[i]}"
         [ -n "$path" ] || continue
         [ -e "$path" ] || [ -L "$path" ] || continue
         if [ "$FORCE" = "0" ] && [ "$(hash_file "$path")" != "$old_hash" ]; then
