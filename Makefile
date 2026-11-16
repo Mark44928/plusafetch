@@ -52,6 +52,7 @@ check: $(BIN)
 	./$(BIN) --format '{os} :: {cpu} :: {memory} :: {kernel~0,7}'
 	./$(BIN) --verify-config || true
 	./$(BIN) --doctor
+	./$(BIN) --statusline
 	@bash tests/alerts-smoke.sh
 
 # Validate every shipped ricer skin against the real config parser.

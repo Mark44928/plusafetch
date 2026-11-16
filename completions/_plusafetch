@@ -17,6 +17,7 @@ _plusafetch() {
         '--values-only[print values without the key column]' \
         '--verify-config[validate the config file]' \
         '--doctor[diagnose config, theme, color and modules]' \
+        '--statusline[one compact memory/swap/disk/load line]' \
         '--gen-config[write the default config]' \
         '--notify[send a Termux notification when done]' \
         '--no-color[disable colors]' \

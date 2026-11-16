@@ -4,7 +4,7 @@ A modular **C++23** system fetch tool for **Termux (Android, unrooted)** with a 
 Fastfetch-style module registry, zero-allocation string buffers, parallel detection, single-write output.
 **No logo. Ever.** Text and data only.
 
-> Status: v0.2.0 · text-only · MIT
+> Status: v0.3.0 · text-only · MIT
 
 ## Example
 
@@ -69,6 +69,7 @@ plusafetch
 | `plusafetch --values-only` | print values only (no key column) |
 | `plusafetch --verify-config` | validate config.jsonc (exit 0 OK / 65 invalid) |
 | `plusafetch --doctor` | report config validity, theme, color mode, module counts, termux-api and TMPDIR |
+| `plusafetch --statusline` | one compact `mem / swap / disk / load` line for tmux, Starship or a shell prompt |
 | `plusafetch --gen-config` | write JSONC config (atomic, see below) |
 | `plusafetch --list-modules` | list every registered module |
 | `plusafetch --notify` | send a Termux notification when done (Android only) |
@@ -107,6 +108,12 @@ JSONC with comments (stripped before strict parsing). `$XDG_CONFIG_HOME` is hono
 config exists and parses, which theme/key colour will win, the active colour
 mode, registered/default/`--all` module counts, termux-api availability, the
 detected platform and `TMPDIR`. It exits 65 when the config or theme is invalid.
+
+### Statusline
+
+`plusafetch --statusline` prints one plain line, e.g. `mem 74% · swap 40% · disk 58% · load 3.2`.
+It detects only memory/swap/disk/load, so it stays fast enough for a prompt or tmux
+`#(plusafetch --statusline)` refresh. It is intentionally incompatible with `--watch`.
 
 ### Alerts
 
@@ -262,7 +269,7 @@ Tiny, dependency-free tools from the same family:
 - [Plusalator](https://github.com/Mark44928/Plusalator) — C++17 calculator REPL — Qalculate-flavored, ghost autosuggest, 18 themes
 - [GrubBlastersHTML](https://github.com/Mark44928/GrubBlastersHTML) — Turn-based artillery in one HTML file — 72 weapons, fully destructible terrain
 - [SnakTUI](https://github.com/Mark44928/SnakTUI) — modern Snake for your terminal — Textual + Python
-- [Easy-Termux-Package-Manager](https://github.com/Mark44928/Easy-Termux-Package-Manager) — fzf-driven package manager for Termux — snapshots, audit, 186 tests
+- [Easy-Termux-Package-Manager](https://github.com/Mark44928/Easy-Termux-Package-Manager) — fzf-driven package manager for Termux — snapshots, audit, 187 tests
 - [NoNameOS](https://github.com/Mark44928/NoNameOS) — OS simulation in a single C++17 file — virtual FS, real shell
 - [Greenit](https://github.com/Mark44928/Greenit) — green-injected theme family — dark + light, single palette.json
 - [CalculaHTML](https://github.com/Mark44928/CalculaHTML) — static HTML calculator — 15 themes + System mode, zero deps

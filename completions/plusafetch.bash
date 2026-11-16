@@ -13,7 +13,7 @@ _plusafetch() {
     esac
 
     local opts="--all --json --watch -w --format --modules --list-modules --list-themes --theme --values-only
-        --verify-config --doctor --gen-config --notify --no-color --color
+        --verify-config --doctor --statusline --gen-config --notify --no-color --color
         --alert --alert-hook --alert-cooldown --check-alerts
         --version --help"
     COMPREPLY=($(compgen -W "$opts" -- "$cur"))

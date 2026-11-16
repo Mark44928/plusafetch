@@ -29,7 +29,7 @@ namespace {
 
 using namespace plf;
 
-constexpr const char* kVersion = "0.2.0";
+constexpr const char* kVersion = "0.3.0";
 constexpr const char* kName    = "plusafetch";
 
 struct ThemePreset { const char* name; const char* key; };
@@ -218,6 +218,7 @@ void printUsage(FILE* out) {
         "  plusafetch --verify-config  Validate $HOME/.config/plusafetch/\n"
         "                            config.jsonc (exit 0 if valid)\n"
         "  plusafetch --doctor       Diagnose config, theme, color and modules\n"
+        "  plusafetch --statusline   Print one compact memory/swap/disk/load line\n"
         "  plusafetch --gen-config     Write default config to\n"
         "                            $HOME/.config/plusafetch/config.jsonc\n"
         "  plusafetch --notify         Send a Termux notification when done\n"
@@ -387,7 +388,7 @@ static std::vector<std::string> alertHits(const FFContext& ctx, const AlertConfi
 }
 
 int run(int argc, char** argv) {
-    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false, wantDoctor = false;
+    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false, wantDoctor = false, wantStatusline = false;
     bool formatSet = false;
     std::string formatText;
     std::string modulesCsv;
@@ -443,6 +444,7 @@ int run(int argc, char** argv) {
         else if (a == "--values-only") wantValuesOnly = true;
         else if (a == "--verify-config") wantVerify = true;
         else if (a == "--doctor") wantDoctor = true;
+        else if (a == "--statusline") wantStatusline = true;
         else if (a == "--gen-config") wantGenConfig = true;
         else if (a == "--list-modules") wantList = true;
         else if (a == "--list-themes") wantListThemes = true;
@@ -461,6 +463,10 @@ int run(int argc, char** argv) {
     if (watchSeconds > 0 && wantJson) {
         std::fprintf(stderr, "%s: --watch cannot be combined with --json\n", kName);
         return 2;
+    }
+    if (watchSeconds > 0 && wantStatusline) {
+        std::fprintf(stderr, "%s: --watch cannot be combined with --statusline (run it from your statusline)\n", kName);
+        return 64;
     }
     if (wantVersion) { std::printf("plusafetch %s\n", kVersion); return 0; }
     if (wantHelp) { printUsage(stdout); return 0; }
@@ -733,6 +739,12 @@ int run(int argc, char** argv) {
             else if (metric == "load") ensureModule("loadavg");
             else if (metric == "battery" || metric == "batt") ensureModule("battery");
         }
+        if (wantStatusline) {
+            ensureModule("memory");
+            ensureModule("swap");
+            ensureModule("disk");
+            ensureModule("loadavg");
+        }
     }
 
     const bool watchTty = isatty(STDOUT_FILENO) != 0;
@@ -755,6 +767,32 @@ int run(int argc, char** argv) {
 
         // ---- Phase 1: parallel detection (independent modules) ----
         runDetectParallel(ctx, detectMods);
+
+        if (wantStatusline) {
+            const double mem = alertMetric(ctx, "mem");
+            const double swap = alertMetric(ctx, "swap");
+            const double disk = alertMetric(ctx, "disk");
+            const double load = alertMetric(ctx, "load");
+            std::string line;
+            auto append = [&](const char* name, double value, const char* suffix) {
+                if (value < 0) return;
+                char buf[64];
+                std::snprintf(buf, sizeof buf, "%s%s%.0f%%%s", line.empty() ? "" : " ", name, value, suffix);
+                line += buf;
+            };
+            append("mem ", mem, " ·");
+            append("swap ", swap, " ·");
+            append("disk ", disk, " ·");
+            if (load >= 0) {
+                char buf[64];
+                std::snprintf(buf, sizeof buf, "%sload %.1f", line.empty() ? "" : " ", load);
+                line += buf;
+            } else if (line.size() >= 3 && line.compare(line.size() - 3, 3, " ·") == 0) {
+                line.resize(line.size() - 3);
+            }
+            std::printf("%s\n", line.empty() ? "plusafetch: no metrics available" : line.c_str());
+            return 0;
+        }
 
         const auto hits = alertHits(ctx, alertCfg);
         if (checkAlerts) {
