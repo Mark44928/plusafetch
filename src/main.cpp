@@ -408,20 +408,13 @@ static std::string reportDefaultPath() {
     return std::string{tmp && *tmp ? tmp : "."} + "/plusafetch-report.jsonl";
 }
 
-static std::string reportTrim(std::string_view value) {
-    size_t begin = 0, end = value.size();
-    while (begin < end && std::isspace(static_cast<unsigned char>(value[begin]))) ++begin;
-    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) --end;
-    return std::string{value.substr(begin, end - begin)};
-}
-
 static std::vector<ReportSample> readReport(const std::string& path) {
     std::vector<ReportSample> samples;
     std::ifstream input(path);
     if (!input) return samples;
     std::string line;
     while (std::getline(input, line)) {
-        line = reportTrim(line);
+        line = trimText(line);
         if (line.empty()) continue;
         nlohmann::json parsed = nlohmann::json::parse(line, nullptr, false);
         if (parsed.is_discarded() || !parsed.is_object()) continue;
