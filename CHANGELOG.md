@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.0] - 2026-11-17
+
+- Added `--report` to save up to 30 `mem`/`swap`/`disk`/`load` samples as JSONL and print a plain-text trend sparkline with deltas.
+- Added `--report-file FILE` for isolated report logs and a `tests/report-smoke.sh` gate for output and JSON validation.
+- Documented the trend report in README, shell completions and `--help`; bumped the public version to 0.4.0.
+
 ## [0.1.0] - 2026-11-12
 
 Initial release plus on-device additions (no version bump — same public tag):

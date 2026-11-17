@@ -18,6 +18,8 @@ _plusafetch() {
         '--verify-config[validate the config file]' \
         '--doctor[diagnose config, theme, color and modules]' \
         '--statusline[one compact memory/swap/disk/load line]' \
+        '--report[save and print a compact trend report]' \
+        '--report-file[use FILE for the report log]:file:_files' \
         '--gen-config[write the default config]' \
         '--notify[send a Termux notification when done]' \
         '--no-color[disable colors]' \

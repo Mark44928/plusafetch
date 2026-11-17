@@ -24,12 +24,17 @@
 #include <cctype>
 #include <cerrno>
 #include <cmath>
+#include <algorithm>
+#include <ctime>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
 
 namespace {
 
 using namespace plf;
 
-constexpr const char* kVersion = "0.3.0";
+constexpr const char* kVersion = "0.4.0";
 constexpr const char* kName    = "plusafetch";
 
 struct ThemePreset { const char* name; const char* key; };
@@ -219,6 +224,8 @@ void printUsage(FILE* out) {
         "                            config.jsonc (exit 0 if valid)\n"
         "  plusafetch --doctor       Diagnose config, theme, color and modules\n"
         "  plusafetch --statusline   Print one compact memory/swap/disk/load line\n"
+        "  plusafetch --report       Save a sample and print a 30-run trend sparkline\n"
+        "  plusafetch --report-file FILE   Use FILE for the report log (default: XDG state)\n"
         "  plusafetch --gen-config     Write default config to\n"
         "                            $HOME/.config/plusafetch/config.jsonc\n"
         "  plusafetch --notify         Send a Termux notification when done\n"
@@ -387,8 +394,134 @@ static std::vector<std::string> alertHits(const FFContext& ctx, const AlertConfi
     return hits;
 }
 
+struct ReportSample {
+    long long timestamp = 0;
+    double mem = -1, swap = -1, disk = -1, load = -1;
+};
+
+static std::string reportDefaultPath() {
+    const char* state = std::getenv("XDG_STATE_HOME");
+    if (state && *state) return std::string{state} + "/plusafetch/report.jsonl";
+    const char* home = std::getenv("HOME");
+    if (home && *home) return std::string{home} + "/.local/state/plusafetch/report.jsonl";
+    const char* tmp = std::getenv("TMPDIR");
+    return std::string{tmp && *tmp ? tmp : "."} + "/plusafetch-report.jsonl";
+}
+
+static std::string reportTrim(std::string_view value) {
+    size_t begin = 0, end = value.size();
+    while (begin < end && std::isspace(static_cast<unsigned char>(value[begin]))) ++begin;
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) --end;
+    return std::string{value.substr(begin, end - begin)};
+}
+
+static std::vector<ReportSample> readReport(const std::string& path) {
+    std::vector<ReportSample> samples;
+    std::ifstream input(path);
+    if (!input) return samples;
+    std::string line;
+    while (std::getline(input, line)) {
+        line = reportTrim(line);
+        if (line.empty()) continue;
+        nlohmann::json parsed = nlohmann::json::parse(line, nullptr, false);
+        if (parsed.is_discarded() || !parsed.is_object()) continue;
+        ReportSample sample;
+        sample.timestamp = parsed.value("ts", 0LL);
+        if (parsed.contains("mem") && parsed["mem"].is_number()) sample.mem = parsed["mem"].get<double>();
+        if (parsed.contains("swap") && parsed["swap"].is_number()) sample.swap = parsed["swap"].get<double>();
+        if (parsed.contains("disk") && parsed["disk"].is_number()) sample.disk = parsed["disk"].get<double>();
+        if (parsed.contains("load") && parsed["load"].is_number()) sample.load = parsed["load"].get<double>();
+        if (sample.timestamp <= 0) continue;
+        samples.push_back(sample);
+    }
+    return samples;
+}
+
+static std::string sparkline(const std::vector<double>& values, double fixedMax = -1.0) {
+    static const char* blocks[] = {"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"};
+    if (values.empty()) return "n/a";
+    double lo = fixedMax >= 0.0 ? 0.0 : values.front();
+    double hi = fixedMax >= 0.0 ? fixedMax : values.front();
+    if (fixedMax < 0.0) {
+        for (double value : values) { lo = std::min(lo, value); hi = std::max(hi, value); }
+    }
+    if (hi <= lo) hi = lo + 1.0;
+    std::string out;
+    for (double value : values) {
+        double normalized = (value - lo) / (hi - lo);
+        int index = static_cast<int>(std::clamp(normalized, 0.0, 0.999999) * 8.0);
+        out += blocks[index];
+    }
+    return out;
+}
+
+static std::string metricDelta(const std::vector<double>& values) {
+    if (values.size() < 2) return "—";
+    char buf[64];
+    std::snprintf(buf, sizeof buf, "%+.1f", values.back() - values.front());
+    return buf;
+}
+
+static bool appendReport(const FFContext& ctx, const std::string& path) {
+    std::vector<ReportSample> samples = readReport(path);
+    ReportSample current;
+    current.timestamp = static_cast<long long>(std::time(nullptr));
+    current.mem = alertMetric(ctx, "mem");
+    current.swap = alertMetric(ctx, "swap");
+    current.disk = alertMetric(ctx, "disk");
+    current.load = alertMetric(ctx, "load");
+    if (current.mem < 0.0 && current.swap < 0.0 && current.disk < 0.0 && current.load < 0.0) return false;
+    samples.push_back(current);
+    if (samples.size() > 30) samples.erase(samples.begin(), samples.begin() + (samples.size() - 30));
+    std::string payload;
+    for (const auto& sample : samples) {
+        char line[256];
+        std::snprintf(line, sizeof line, "{\"ts\":%lld", sample.timestamp);
+        payload += line;
+        auto appendMetric = [&payload](const char* key, double value) {
+            if (value < 0.0) return;
+            char field[80];
+            std::snprintf(field, sizeof field, ",\"%s\":%.3f", key, value);
+            payload += field;
+        };
+        appendMetric("mem", sample.mem);
+        appendMetric("swap", sample.swap);
+        appendMetric("disk", sample.disk);
+        appendMetric("load", sample.load);
+        payload += "}\n";
+    }
+    return writeConfigAtomic(path, payload);
+}
+
+static void printReport(const std::string& path) {
+    const std::vector<ReportSample> samples = readReport(path);
+    std::printf("plusafetch report · last %zu samples\n", samples.size());
+    auto valuesFor = [&samples](auto member) {
+        std::vector<double> values;
+        for (const auto& sample : samples) if (sample.*member >= 0.0) values.push_back(sample.*member);
+        return values;
+    };
+    auto printMetric = [](const char* label, const std::vector<double>& values, const char* suffix, bool percent) {
+        if (values.empty()) {
+            std::printf("%-5s n/a\n", label);
+            return;
+        }
+        std::printf("%-5s %.0f%s  %s  %s vs first\n", label, values.back(), suffix,
+                    sparkline(values, percent ? 100.0 : -1.0).c_str(), metricDelta(values).c_str());
+    };
+    printMetric("mem", valuesFor(&ReportSample::mem), "%", true);
+    printMetric("swap", valuesFor(&ReportSample::swap), "%", true);
+    printMetric("disk", valuesFor(&ReportSample::disk), "%", true);
+    const auto loads = valuesFor(&ReportSample::load);
+    if (loads.empty()) std::printf("load  n/a\n");
+    else std::printf("load  %.1f  %s  %s vs first\n", loads.back(), sparkline(loads).c_str(), metricDelta(loads).c_str());
+    std::printf("log   %s\n", path.c_str());
+}
+
 int run(int argc, char** argv) {
-    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false, wantDoctor = false, wantStatusline = false;
+    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false, wantDoctor = false, wantStatusline = false, wantReport = false;
+    std::string reportPath;
+    bool reportFileSet = false;
     bool formatSet = false;
     std::string formatText;
     std::string modulesCsv;
@@ -445,6 +578,9 @@ int run(int argc, char** argv) {
         else if (a == "--verify-config") wantVerify = true;
         else if (a == "--doctor") wantDoctor = true;
         else if (a == "--statusline") wantStatusline = true;
+        else if (a == "--report") wantReport = true;
+        else if (a == "--report-file" && i + 1 < argc) { reportPath = std::string{argv[++i]}; reportFileSet = true; }
+        else if (a.rfind("--report-file=", 0) == 0) { reportPath = std::string{a.substr(14)}; reportFileSet = true; }
         else if (a == "--gen-config") wantGenConfig = true;
         else if (a == "--list-modules") wantList = true;
         else if (a == "--list-themes") wantListThemes = true;
@@ -468,6 +604,27 @@ int run(int argc, char** argv) {
         std::fprintf(stderr, "%s: --watch cannot be combined with --statusline (run it from your statusline)\n", kName);
         return 64;
     }
+    if (watchSeconds > 0 && wantReport) {
+        std::fprintf(stderr, "%s: --watch cannot be combined with --report\n", kName);
+        return 64;
+    }
+    if (wantReport && wantJson) {
+        std::fprintf(stderr, "%s: --report cannot be combined with --json\n", kName);
+        return 64;
+    }
+    if (wantReport && wantStatusline) {
+        std::fprintf(stderr, "%s: --report already prints a compact report\n", kName);
+        return 64;
+    }
+    if (reportFileSet && !wantReport) {
+        std::fprintf(stderr, "%s: --report-file requires --report\n", kName);
+        return 64;
+    }
+    if (reportFileSet && reportPath.empty()) {
+        std::fprintf(stderr, "%s: --report-file needs a path\n", kName);
+        return 64;
+    }
+    if (wantReport && reportPath.empty()) reportPath = reportDefaultPath();
     if (wantVersion) { std::printf("plusafetch %s\n", kVersion); return 0; }
     if (wantHelp) { printUsage(stdout); return 0; }
     if (wantList) { printListModules(); return 0; }
@@ -739,7 +896,7 @@ int run(int argc, char** argv) {
             else if (metric == "load") ensureModule("loadavg");
             else if (metric == "battery" || metric == "batt") ensureModule("battery");
         }
-        if (wantStatusline) {
+        if (wantStatusline || wantReport) {
             ensureModule("memory");
             ensureModule("swap");
             ensureModule("disk");
@@ -767,6 +924,15 @@ int run(int argc, char** argv) {
 
         // ---- Phase 1: parallel detection (independent modules) ----
         runDetectParallel(ctx, detectMods);
+
+        if (wantReport) {
+            if (!appendReport(ctx, reportPath)) {
+                std::fprintf(stderr, "%s: could not write report to %s\n", kName, reportPath.c_str());
+                return 74;
+            }
+            printReport(reportPath);
+            return 0;
+        }
 
         if (wantStatusline) {
             const double mem = alertMetric(ctx, "mem");

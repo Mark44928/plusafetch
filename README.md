@@ -4,7 +4,7 @@ A modular **C++23** system fetch tool for **Termux (Android, unrooted)** with a 
 Fastfetch-style module registry, zero-allocation string buffers, parallel detection, single-write output.
 **No logo. Ever.** Text and data only.
 
-> Status: v0.3.0 · text-only · MIT
+> Status: v0.4.0 · text-only · MIT
 
 ## Example
 
@@ -76,6 +76,8 @@ plusafetch
 | `plusafetch --verify-config` | validate config.jsonc (exit 0 OK / 65 invalid) |
 | `plusafetch --doctor` | report config validity, theme, color mode, module counts, termux-api and TMPDIR |
 | `plusafetch --statusline` | one compact `mem / swap / disk / load` line for tmux, Starship or a shell prompt |
+| `plusafetch --report` | save a tiny JSONL sample and print a 30-run trend sparkline (`mem`, `swap`, `disk`, `load`) |
+| `plusafetch --report-file FILE` | write the report log to `FILE` instead of the XDG state path |
 | `plusafetch --gen-config` | write JSONC config (atomic, see below) |
 | `plusafetch --list-modules` | list every registered module |
 | `plusafetch --notify` | send a Termux notification when done (Android only) |
@@ -120,6 +122,21 @@ detected platform and `TMPDIR`. It exits 65 when the config or theme is invalid.
 `plusafetch --statusline` prints one plain line, e.g. `mem 74% · swap 40% · disk 58% · load 3.2`.
 It detects only memory/swap/disk/load, so it stays fast enough for a prompt or tmux
 `#(plusafetch --statusline)` refresh. It is intentionally incompatible with `--watch`.
+
+### Trend report
+
+`plusafetch --report` appends one compact JSONL sample to the report log (default
+`$XDG_STATE_HOME/plusafetch/report.jsonl`, or `~/.local/state/plusafetch/report.jsonl`) and
+prints the latest sample as `mem`, `swap`, `disk` and `load` sparklines. The log is capped
+at 30 samples. Use `--report-file FILE` for an isolated log.
+
+```sh
+plusafetch --report
+plusafetch --report --report-file ~/.local/state/plusafetch/report.jsonl
+```
+
+The report is plain text, needs no network access, and the JSONL file is safe to graph or
+inspect later.
 
 ### Alerts
 
