@@ -34,7 +34,7 @@ namespace {
 
 using namespace plf;
 
-constexpr const char* kVersion = "0.4.0";
+constexpr const char* kVersion = "0.5.0";
 constexpr const char* kName    = "plusafetch";
 
 struct ThemePreset { const char* name; const char* key; };
@@ -396,7 +396,9 @@ static std::vector<std::string> alertHits(const FFContext& ctx, const AlertConfi
 
 struct ReportSample {
     long long timestamp = 0;
-    double mem = -1, swap = -1, disk = -1, load = -1;
+    double mem = -1, swap = -1, disk = -1, load = -1, battery = -1;
+    // -1 is a valid temperature; use a value outside the accepted range.
+    double temp = -999;
 };
 
 static std::string reportDefaultPath() {
@@ -424,6 +426,8 @@ static std::vector<ReportSample> readReport(const std::string& path) {
         if (parsed.contains("swap") && parsed["swap"].is_number()) sample.swap = parsed["swap"].get<double>();
         if (parsed.contains("disk") && parsed["disk"].is_number()) sample.disk = parsed["disk"].get<double>();
         if (parsed.contains("load") && parsed["load"].is_number()) sample.load = parsed["load"].get<double>();
+        if (parsed.contains("battery") && parsed["battery"].is_number()) sample.battery = parsed["battery"].get<double>();
+        if (parsed.contains("temp") && parsed["temp"].is_number()) sample.temp = parsed["temp"].get<double>();
         if (sample.timestamp <= 0) continue;
         samples.push_back(sample);
     }
@@ -455,6 +459,29 @@ static std::string metricDelta(const std::vector<double>& values) {
     return buf;
 }
 
+static double reportedBattery(const FFContext& ctx) {
+    if (!ctx.batteryLine) return -1;
+    const std::string& line = *ctx.batteryLine;
+    char* end = nullptr;
+    double value = std::strtod(line.c_str(), &end);
+    if (end == line.c_str() || *end != '%' || !std::isfinite(value)) return -1;
+    return value;
+}
+
+static double reportedTemp(const FFContext& ctx) {
+    if (!ctx.batteryLine) return -999;
+    const std::string& line = *ctx.batteryLine;
+    const size_t degree = line.find("°C");
+    if (degree == std::string::npos) return -999;
+    size_t begin = degree;
+    while (begin > 0 && (std::isdigit(static_cast<unsigned char>(line[begin - 1])) || line[begin - 1] == '.' || line[begin - 1] == '-')) --begin;
+    const std::string number = line.substr(begin, degree - begin);
+    char* end = nullptr;
+    double value = std::strtod(number.c_str(), &end);
+    return !number.empty() && end != number.c_str() && *end == '\0' &&
+           std::isfinite(value) && value > -50 && value < 150 ? value : -999;
+}
+
 static bool appendReport(const FFContext& ctx, const std::string& path) {
     std::vector<ReportSample> samples = readReport(path);
     ReportSample current;
@@ -463,7 +490,10 @@ static bool appendReport(const FFContext& ctx, const std::string& path) {
     current.swap = alertMetric(ctx, "swap");
     current.disk = alertMetric(ctx, "disk");
     current.load = alertMetric(ctx, "load");
-    if (current.mem < 0.0 && current.swap < 0.0 && current.disk < 0.0 && current.load < 0.0) return false;
+    current.battery = reportedBattery(ctx);
+    current.temp = reportedTemp(ctx);
+    if (current.mem < 0.0 && current.swap < 0.0 && current.disk < 0.0 && current.load < 0.0 &&
+        current.battery < 0.0 && current.temp <= -50.0) return false;
     samples.push_back(current);
     if (samples.size() > 30) samples.erase(samples.begin(), samples.begin() + (samples.size() - 30));
     std::string payload;
@@ -471,16 +501,18 @@ static bool appendReport(const FFContext& ctx, const std::string& path) {
         char line[256];
         std::snprintf(line, sizeof line, "{\"ts\":%lld", sample.timestamp);
         payload += line;
-        auto appendMetric = [&payload](const char* key, double value) {
-            if (value < 0.0) return;
+        auto appendMetric = [&payload](const char* key, double value, double minimum) {
+            if (value < minimum) return;
             char field[80];
             std::snprintf(field, sizeof field, ",\"%s\":%.3f", key, value);
             payload += field;
         };
-        appendMetric("mem", sample.mem);
-        appendMetric("swap", sample.swap);
-        appendMetric("disk", sample.disk);
-        appendMetric("load", sample.load);
+        appendMetric("mem", sample.mem, 0.0);
+        appendMetric("swap", sample.swap, 0.0);
+        appendMetric("disk", sample.disk, 0.0);
+        appendMetric("load", sample.load, 0.0);
+        appendMetric("battery", sample.battery, 0.0);
+        appendMetric("temp", sample.temp, -50.0);
         payload += "}\n";
     }
     return writeConfigAtomic(path, payload);
@@ -489,9 +521,9 @@ static bool appendReport(const FFContext& ctx, const std::string& path) {
 static void printReport(const std::string& path) {
     const std::vector<ReportSample> samples = readReport(path);
     std::printf("plusafetch report · last %zu samples\n", samples.size());
-    auto valuesFor = [&samples](auto member) {
+    auto valuesFor = [&samples](auto member, double minimum) {
         std::vector<double> values;
-        for (const auto& sample : samples) if (sample.*member >= 0.0) values.push_back(sample.*member);
+        for (const auto& sample : samples) if (sample.*member >= minimum) values.push_back(sample.*member);
         return values;
     };
     auto printMetric = [](const char* label, const std::vector<double>& values, const char* suffix, bool percent) {
@@ -502,17 +534,23 @@ static void printReport(const std::string& path) {
         std::printf("%-5s %.0f%s  %s  %s vs first\n", label, values.back(), suffix,
                     sparkline(values, percent ? 100.0 : -1.0).c_str(), metricDelta(values).c_str());
     };
-    printMetric("mem", valuesFor(&ReportSample::mem), "%", true);
-    printMetric("swap", valuesFor(&ReportSample::swap), "%", true);
-    printMetric("disk", valuesFor(&ReportSample::disk), "%", true);
-    const auto loads = valuesFor(&ReportSample::load);
+    printMetric("mem", valuesFor(&ReportSample::mem, 0.0), "%", true);
+    printMetric("swap", valuesFor(&ReportSample::swap, 0.0), "%", true);
+    printMetric("disk", valuesFor(&ReportSample::disk, 0.0), "%", true);
+    const auto loads = valuesFor(&ReportSample::load, 0.0);
     if (loads.empty()) std::printf("load  n/a\n");
     else std::printf("load  %.1f  %s  %s vs first\n", loads.back(), sparkline(loads).c_str(), metricDelta(loads).c_str());
+    const auto batteries = valuesFor(&ReportSample::battery, 0.0);
+    if (!batteries.empty()) printMetric("batt", batteries, "%", true);
+    const auto temps = valuesFor(&ReportSample::temp, -50.0);
+    if (!temps.empty()) {
+        std::printf("temp  %.1f°C  %s  %s vs first\n", temps.back(), sparkline(temps).c_str(), metricDelta(temps).c_str());
+    }
     std::printf("log   %s\n", path.c_str());
 }
 
 int run(int argc, char** argv) {
-    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false, wantDoctor = false, wantStatusline = false, wantReport = false;
+    bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false, wantDoctor = false, wantStatusline = false, wantReport = false, wantMoo = false;
     std::string reportPath;
     bool reportFileSet = false;
     bool formatSet = false;
@@ -580,6 +618,7 @@ int run(int argc, char** argv) {
         else if (a == "--theme" && i + 1 < argc) themeName = argv[++i];
         else if (a.rfind("--theme=", 0) == 0) themeName = std::string(a.substr(8));
         else if (a == "--version" || a == "-v") wantVersion = true;
+        else if (a == "--moo") wantMoo = true;
         else if (a == "--help" || a == "-h") wantHelp = true;
         else if (a == "--format" && i + 1 < argc) { formatText = argv[++i]; formatSet = true; }
         else if (a.rfind("--format=", 0) == 0) { formatText = std::string(a.substr(9)); formatSet = true; }
@@ -620,6 +659,17 @@ int run(int argc, char** argv) {
     if (wantReport && reportPath.empty()) reportPath = reportDefaultPath();
     if (wantVersion) { std::printf("plusafetch %s\n", kVersion); return 0; }
     if (wantHelp) { printUsage(stdout); return 0; }
+    if (wantMoo) {
+        std::printf(" ________________________________________\n"
+                    "< No logo. Ever. Except this one. >\n"
+                    " ----------------------------------------\n"
+                    "        \\   ^__^\n"
+                    "         \\  (oo)\\_______\n"
+                    "            (__)\\       )\\/\\\n"
+                    "                ||----w |\n"
+                    "                ||     ||\n");
+        return 0;
+    }
     if (wantList) { printListModules(); return 0; }
     if (wantListThemes) {
         for (const auto& t : kThemes) std::printf("%-18s %s\n", t.name, t.key);
@@ -895,6 +945,7 @@ int run(int argc, char** argv) {
             ensureModule("disk");
             ensureModule("loadavg");
         }
+        if (wantReport) ensureModule("battery");
     }
 
     const bool watchTty = isatty(STDOUT_FILENO) != 0;

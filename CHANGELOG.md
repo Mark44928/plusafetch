@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.5.0] - 2026-11-17
+
+- Extended `--report` with battery percentage and battery-temperature samples when the Android battery source exposes them.
+- Documented the new report metrics and kept missing values out of the JSONL log instead of fabricating zeros.
+
 ## [0.4.0] - 2026-11-17
 
 - Added `--report` to save up to 30 `mem`/`swap`/`disk`/`load` samples as JSONL and print a plain-text trend sparkline with deltas.

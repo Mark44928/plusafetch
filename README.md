@@ -4,7 +4,7 @@ A modular **C++23** system fetch tool for **Termux (Android, unrooted)** with a 
 Fastfetch-style module registry, zero-allocation string buffers, parallel detection, single-write output.
 **No logo. Ever.** Text and data only.
 
-> Status: v0.4.0 · text-only · MIT
+> Status: v0.5.0 · text-only · MIT
 
 ## Example
 
@@ -127,8 +127,9 @@ It detects only memory/swap/disk/load, so it stays fast enough for a prompt or t
 
 `plusafetch --report` appends one compact JSONL sample to the report log (default
 `$XDG_STATE_HOME/plusafetch/report.jsonl`, or `~/.local/state/plusafetch/report.jsonl`) and
-prints the latest sample as `mem`, `swap`, `disk` and `load` sparklines. The log is capped
-at 30 samples. Use `--report-file FILE` for an isolated log.
+prints the latest sample as `mem`, `swap`, `disk` and `load` sparklines, plus `batt` and
+`temp` when battery data is available. The log is capped at 30 samples. Use
+`--report-file FILE` for an isolated log.
 
 ```sh
 plusafetch --report
@@ -295,7 +296,7 @@ Tiny, dependency-free tools from the same family:
 - [Plusalator](https://github.com/Mark44928/Plusalator) — C++17 calculator REPL — Qalculate-flavored, ghost autosuggest, 18 themes
 - [GrubBlastersHTML](https://github.com/Mark44928/GrubBlastersHTML) — Turn-based artillery in one HTML file — 72 weapons, fully destructible terrain
 - [SnakTUI](https://github.com/Mark44928/SnakTUI) — Snake game for the terminal — Textual + Python
-- [Easy-Termux-Package-Manager](https://github.com/Mark44928/Easy-Termux-Package-Manager) — fzf-driven package manager for Termux — snapshots, audit, 192 tests
+- [Easy-Termux-Package-Manager](https://github.com/Mark44928/Easy-Termux-Package-Manager) — fzf-driven package manager for Termux — snapshots, audit, 193 tests
 - [NoNameOS](https://github.com/Mark44928/NoNameOS) — OS simulation in a single C++17 file — virtual FS, real shell
 - [Greenit](https://github.com/Mark44928/Greenit) — green-injected theme family — dark + light, single palette.json
 - [CalculaHTML](https://github.com/Mark44928/CalculaHTML) — static HTML calculator — 15 themes + System mode, zero deps

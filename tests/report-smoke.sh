@@ -6,6 +6,7 @@ BIN="$ROOT/plusafetch"
 TMP=$(mktemp -d "${TMPDIR:-/data/data/com.termux/files/usr/tmp}/plusafetch-report.XXXXXX")
 trap 'rm -rf -- "$TMP"' EXIT
 LOG="$TMP/report.jsonl"
+printf '{"ts":1,"mem":10,"temp":-5}\n' > "$LOG"
 
 PLUSAFETCH_CONFIG="$TMP/missing.jsonc" "$BIN" --report --report-file "$LOG" >/dev/null
 PLUSAFETCH_CONFIG="$TMP/missing.jsonc" "$BIN" --report --report-file "$LOG" >"$TMP/out.txt"
@@ -17,5 +18,6 @@ rows = [json.loads(line) for line in open(sys.argv[1], encoding='utf-8') if line
 assert len(rows) >= 2, rows
 assert all('ts' in row for row in rows)
 assert any('mem' in row or 'load' in row for row in rows)
+assert any(row.get('temp') == -5 for row in rows), 'negative temperature was dropped'
 print(f'report smoke: {len(rows)} samples')
 PY
