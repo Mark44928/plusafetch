@@ -58,6 +58,17 @@ Result<std::string> readFirstLine(std::string_view path) {
         });
 }
 
+// Reap a SIGKILLed child without ever blocking in waitpid(2): poll with
+// WNOHANG briefly, then give up and leave the zombie for init instead of
+// hanging the caller (SIGKILL cannot interrupt uninterruptible sleep).
+static void reapKilledChild(pid_t pid) {
+    for (int i = 0; i < 50; ++i) {
+        int kw = ::waitpid(pid, nullptr, WNOHANG);
+        if (kw == pid || kw < 0) return;
+        ::usleep(10000);
+    }
+}
+
 Result<std::string> execCapture(const char* const argv[], std::size_t maxBytes) {
     int pipefd[2];
     if (::pipe(pipefd) != 0)
@@ -90,6 +101,7 @@ Result<std::string> execCapture(const char* const argv[], std::size_t maxBytes) 
     std::size_t total = 0;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(execTimeoutMs);
     bool timedOut = false;
+    bool capHit = false;
     for (;;) {
         const auto now = std::chrono::steady_clock::now();
         const auto remainMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count());
@@ -106,17 +118,21 @@ Result<std::string> execCapture(const char* const argv[], std::size_t maxBytes) 
         if (n < 0) { if (errno == EINTR) continue; break; }
         if (n == 0) break;
         total += static_cast<std::size_t>(n);
-        if (total > maxBytes) { out.append(blk, maxBytes - (total - static_cast<std::size_t>(n))); break; }
+        if (total > maxBytes) { out.append(blk, maxBytes - (total - static_cast<std::size_t>(n))); capHit = true; break; }
         out.append(blk, static_cast<size_t>(n));
     }
     ::close(pipefd[0]);
+    if (capHit) {
+        // Reading stopped, so a child blocked on a full pipe can never exit on
+        // its own; kill it before reaping instead of hanging the fetch forever.
+        // The truncated frame is still returned, as before.
+        ::kill(pid, SIGKILL);
+        reapKilledChild(pid);
+        return std::move(out);
+    }
     if (timedOut) {
         ::kill(pid, SIGKILL);
-        for (int i = 0; i < 50; ++i) {
-            int kw = ::waitpid(pid, nullptr, 0);
-            if (kw == pid) break;
-            ::usleep(10000);
-        }
+        reapKilledChild(pid);
         return std::unexpected(errCtx(std::string("exec timeout: ") + argv[0], 127));
     }
     int status = 0;

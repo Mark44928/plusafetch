@@ -2,7 +2,7 @@
 # Installer CI: fake HOME -> install -> rerun -> uninstall.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP="${TMPDIR:-/tmp}/plusafetch-install-smoke.$$"
+TMP="${TMPDIR:-$HOME/.cache}/plusafetch-install-smoke.$$"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/home" "$TMP/state" "$TMP/prefix"
 export HOME="$TMP/home" XDG_STATE_HOME="$TMP/state"
