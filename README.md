@@ -1,5 +1,7 @@
 # Plusafetch
 
+<p align="center"><img src="assets/logo.svg" width="760" alt="Plusafetch logo"></p>
+
 A modular **C++23** system fetch tool for **Termux (Android, unrooted)** with a **Linux** fallback.
 Fastfetch-style module registry, zero-allocation string buffers, parallel detection, single-write output.
 **No logo. Ever.** Text and data only.
