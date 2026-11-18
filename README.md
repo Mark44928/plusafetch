@@ -4,7 +4,7 @@ A modular **C++23** system fetch tool for **Termux (Android, unrooted)** with a 
 Fastfetch-style module registry, zero-allocation string buffers, parallel detection, single-write output.
 **No logo. Ever.** Text and data only.
 
-> Status: v0.5.0 · text-only · MIT
+> Status: v0.6.0 · text-only · MIT
 
 ## Example
 
@@ -77,7 +77,8 @@ plusafetch
 | `plusafetch --doctor` | report config validity, theme, color mode, module counts, termux-api and TMPDIR |
 | `plusafetch --statusline` | one compact `mem / swap / disk / load` line for tmux, Starship or a shell prompt |
 | `plusafetch --report` | save a tiny JSONL sample and print a 30-run trend sparkline (`mem`, `swap`, `disk`, `load`) |
-| `plusafetch --report-file FILE` | write the report log to `FILE` instead of the XDG state path |
+| `plusafetch --report-file FILE` | use `FILE` as the report log for `--report`/`--html-report` (default: XDG state) |
+| `plusafetch --html-report [FILE]` | write a standalone offline HTML trend report from the report log (default `$XDG_STATE_HOME/plusafetch/report.html`) |
 | `plusafetch --gen-config` | write JSONC config (atomic, see below) |
 | `plusafetch --list-modules` | list every registered module |
 | `plusafetch --notify` | send a Termux notification when done (Android only) |
@@ -138,6 +139,25 @@ plusafetch --report --report-file ~/.local/state/plusafetch/report.jsonl
 
 The report is plain text, needs no network access, and the JSONL file is safe to graph or
 inspect later.
+
+### HTML report
+
+`plusafetch --html-report [FILE]` renders the same log into a standalone, offline HTML page
+(no external assets, no JavaScript). It is a pure render: it never appends a sample — run
+`plusafetch --report` first, or combine both (`--report --html-report` appends, prints the
+text report and writes the HTML). `FILE` defaults to
+`$XDG_STATE_HOME/plusafetch/report.html` (or `~/.local/state/plusafetch/report.html`);
+`--report-file FILE` selects the input log. The page shows the generation timestamp, the
+sample count (last 30 max), SVG bar trends for `mem`/`swap`/`disk`/`load` plus `battery`
+and `temp` when present (`temp` `-999` means "sensor absent" and is never rendered), and a
+table of the last 30 samples. All interpolated values are HTML-escaped, a missing or corrupt
+JSONL log renders an empty page with a warning instead of crashing, and an existing symlink
+at `FILE` is refused.
+
+```sh
+plusafetch --html-report
+plusafetch --html-report ~/report.html --report-file ~/.local/state/plusafetch/report.jsonl
+```
 
 ### Alerts
 
@@ -296,7 +316,7 @@ Tiny, dependency-free tools from the same family:
 - [Plusalator](https://github.com/Mark44928/Plusalator) — C++17 calculator REPL — Qalculate-flavored, ghost autosuggest, 18 themes
 - [GrubBlastersHTML](https://github.com/Mark44928/GrubBlastersHTML) — Turn-based artillery in one HTML file — 72 weapons, fully destructible terrain
 - [SnakTUI](https://github.com/Mark44928/SnakTUI) — Snake game for the terminal — Textual + Python
-- [Easy-Termux-Package-Manager](https://github.com/Mark44928/Easy-Termux-Package-Manager) — fzf-driven package manager for Termux — snapshots, audit, 193 tests
+- [Easy-Termux-Package-Manager](https://github.com/Mark44928/Easy-Termux-Package-Manager) — fzf-driven package manager for Termux — snapshots, audit, 194 tests
 - [NoNameOS](https://github.com/Mark44928/NoNameOS) — OS simulation in a single C++17 file — virtual FS, real shell
 - [Greenit](https://github.com/Mark44928/Greenit) — green-injected theme family — dark + light, single palette.json
 - [CalculaHTML](https://github.com/Mark44928/CalculaHTML) — static HTML calculator — 15 themes + System mode, zero deps

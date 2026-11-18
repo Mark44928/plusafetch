@@ -34,7 +34,7 @@ namespace {
 
 using namespace plf;
 
-constexpr const char* kVersion = "0.5.0";
+constexpr const char* kVersion = "0.6.0";
 constexpr const char* kName    = "plusafetch";
 
 struct ThemePreset { const char* name; const char* key; };
@@ -225,7 +225,11 @@ void printUsage(FILE* out) {
         "  plusafetch --doctor       Diagnose config, theme, color and modules\n"
         "  plusafetch --statusline   Print one compact memory/swap/disk/load line\n"
         "  plusafetch --report       Save a sample and print a 30-run trend sparkline\n"
-        "  plusafetch --report-file FILE   Use FILE for the report log (default: XDG state)\n"
+        "  plusafetch --html-report [FILE]  Write a standalone offline HTML trend report\n"
+        "                            (renders the log; combine with --report to\n"
+        "                            append; default: XDG state report.html)\n"
+        "  plusafetch --report-file FILE   Use FILE for the report log\n"
+        "                            (--report/--html-report; default: XDG state)\n"
         "  plusafetch --gen-config     Write default config to\n"
         "                            $HOME/.config/plusafetch/config.jsonc\n"
         "  plusafetch --notify         Send a Termux notification when done\n"
@@ -421,7 +425,12 @@ static std::vector<ReportSample> readReport(const std::string& path) {
         nlohmann::json parsed = nlohmann::json::parse(line, nullptr, false);
         if (parsed.is_discarded() || !parsed.is_object()) continue;
         ReportSample sample;
-        sample.timestamp = parsed.value("ts", 0LL);
+        // is_number() first: get<double> cannot throw on numeric types, and
+        // out-of-range floats are dropped instead of crashing on corrupt logs.
+        if (parsed.contains("ts") && parsed["ts"].is_number()) {
+            const double d = parsed["ts"].get<double>();
+            if (std::isfinite(d) && d > 0.0 && d < 9223372036854775808.0) sample.timestamp = static_cast<long long>(d);
+        }
         if (parsed.contains("mem") && parsed["mem"].is_number()) sample.mem = parsed["mem"].get<double>();
         if (parsed.contains("swap") && parsed["swap"].is_number()) sample.swap = parsed["swap"].get<double>();
         if (parsed.contains("disk") && parsed["disk"].is_number()) sample.disk = parsed["disk"].get<double>();
@@ -549,11 +558,246 @@ static void printReport(const std::string& path) {
     std::printf("log   %s\n", path.c_str());
 }
 
+static std::string reportHtmlDefaultPath() {
+    const char* state = std::getenv("XDG_STATE_HOME");
+    if (state && *state) return std::string{state} + "/plusafetch/report.html";
+    const char* home = std::getenv("HOME");
+    if (home && *home) return std::string{home} + "/.local/state/plusafetch/report.html";
+    const char* tmp = std::getenv("TMPDIR");
+    return std::string{tmp && *tmp ? tmp : "."} + "/plusafetch-report.html";
+}
+
+static bool pathIsSymlink(const std::string& path) {
+    struct stat st{};
+    if (::lstat(path.c_str(), &st) != 0) return false;
+    return S_ISLNK(st.st_mode);
+}
+
+static std::string htmlEscape(std::string_view in) {
+    std::string out;
+    out.reserve(in.size() + 16);
+    for (char c : in) {
+        switch (c) {
+            case '&': out += "&amp;"; break;
+            case '<': out += "&lt;"; break;
+            case '>': out += "&gt;"; break;
+            case '"': out += "&quot;"; break;
+            case '\'': out += "&#39;"; break;
+            default: out += c;
+        }
+    }
+    return out;
+}
+
+static std::string formatEpochLocal(long long ts) {
+    if (ts <= 0) return "epoch " + std::to_string(ts);
+    const std::time_t t = static_cast<std::time_t>(ts);
+    const std::tm* tmPtr = std::localtime(&t);
+    if (!tmPtr) return "epoch " + std::to_string(ts);
+    const std::tm tmBuf = *tmPtr;
+    char buf[32];
+    if (std::strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S", &tmBuf) == 0)
+        return "epoch " + std::to_string(ts);
+    return buf;
+}
+
+struct TrendChart {
+    const char* label = "";
+    std::vector<double> values;
+    double fixedMax = -1.0; // >=0: fixed 0..fixedMax scale; <0: auto range
+    int precision = 1;
+    const char* suffix = "";
+    const char* color = "#7BD88F";
+};
+
+static std::string formatChartValue(double v, int precision, const char* suffix) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, precision == 0 ? "%.0f%s" : "%.1f%s", v, suffix);
+    return buf;
+}
+
+static std::string renderTrendCard(const TrendChart& chart) {
+    std::string out;
+    const std::string label = htmlEscape(chart.label);
+    if (chart.values.empty()) {
+        out += "<figure class=\"card\"><figcaption><span class=\"metric\">";
+        out += label;
+        out += "</span><span class=\"cur na\">n/a</span></figcaption></figure>\n";
+        return out;
+    }
+    const std::size_t n = chart.values.size();
+    double lo, hi;
+    if (chart.fixedMax >= 0.0) {
+        lo = 0.0;
+        hi = chart.fixedMax;
+    } else {
+        lo = chart.values.front();
+        hi = chart.values.front();
+        for (double v : chart.values) { lo = std::min(lo, v); hi = std::max(hi, v); }
+        if (hi <= lo) hi = lo + 1.0;
+    }
+    constexpr double kMaxH = 56.0, kBarW = 10.0, kGap = 4.0, kPad = 2.0;
+    constexpr double kHeight = kPad * 2 + kMaxH + 1.0;
+    const double width = kPad * 2 + static_cast<double>(n) * kBarW + static_cast<double>(n - 1) * kGap;
+    char num[192];
+    out += "<figure class=\"card\"><figcaption><span class=\"metric\">";
+    out += label;
+    out += "</span><span class=\"cur\">";
+    out += formatChartValue(chart.values.back(), chart.precision, chart.suffix);
+    out += "</span><span class=\"delta\">";
+    std::snprintf(num, sizeof num, "%+.1f vs first", chart.values.back() - chart.values.front());
+    out += num;
+    out += "</span></figcaption>\n<svg class=\"bars\" viewBox=\"0 0 ";
+    std::snprintf(num, sizeof num, "%.1f", width);
+    out += num;
+    out += ' ';
+    std::snprintf(num, sizeof num, "%.1f", kHeight);
+    out += num;
+    out += "\" role=\"img\" aria-label=\"";
+    out += htmlEscape(std::string{chart.label} + " trend, last " + std::to_string(n) + " samples");
+    out += "\">\n";
+    for (std::size_t i = 0; i < n; ++i) {
+        const double frac = std::clamp((chart.values[i] - lo) / (hi - lo), 0.0, 1.0);
+        const double barH = frac * kMaxH;
+        if (barH < 0.5) continue;
+        const double x = kPad + static_cast<double>(i) * (kBarW + kGap);
+        const double y = kPad + (kMaxH - barH);
+        std::snprintf(num, sizeof num,
+                      "<rect x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s %s</title></rect>\n",
+                      x, y, kBarW, barH, chart.color, label.c_str(),
+                      formatChartValue(chart.values[i], chart.precision, chart.suffix).c_str());
+        out += num;
+    }
+    std::snprintf(num, sizeof num, "<line class=\"baseline\" x1=\"0\" y1=\"%.1f\" x2=\"%.1f\" y2=\"%.1f\"/>\n",
+                  kPad + kMaxH, width, kPad + kMaxH);
+    out += num;
+    out += "</svg></figure>\n";
+    return out;
+}
+
+static std::string tableCellPercent(double v) {
+    if (v < 0.0) return "<td class=\"na\">—</td>";
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "<td>%.0f%%</td>", v);
+    return buf;
+}
+
+static bool writeHtmlReport(const std::string& logPath, const std::string& htmlPath) {
+    if (pathIsSymlink(htmlPath)) {
+        std::fprintf(stderr, "%s: refusing to write HTML report to %s (symlink)\n", kName, htmlPath.c_str());
+        return false;
+    }
+    std::vector<ReportSample> samples = readReport(logPath);
+    if (samples.size() > 30) samples.erase(samples.begin(), samples.begin() + (samples.size() - 30));
+
+    auto valuesFor = [&samples](auto member, double minimum) {
+        std::vector<double> values;
+        for (const auto& sample : samples) if (sample.*member >= minimum) values.push_back(sample.*member);
+        return values;
+    };
+    const auto mem = valuesFor(&ReportSample::mem, 0.0);
+    const auto swap = valuesFor(&ReportSample::swap, 0.0);
+    const auto disk = valuesFor(&ReportSample::disk, 0.0);
+    const auto load = valuesFor(&ReportSample::load, 0.0);
+    const auto battery = valuesFor(&ReportSample::battery, 0.0);
+    // -999 sentinel = sensor absent; valuesFor(..., -50.0) drops it.
+    const auto temp = valuesFor(&ReportSample::temp, -50.0);
+
+    const std::string generated = formatEpochLocal(static_cast<long long>(std::time(nullptr)));
+    std::string page;
+    page.reserve(16 * 1024);
+    page += "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n";
+    page += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
+    page += "<title>Plusafetch report</title>\n<style>\n";
+    page += ":root{color-scheme:dark}\n"
+            "body{margin:0;background:#0d1117;color:#e6edf3;font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}\n"
+            "main{max-width:980px;margin:0 auto;padding:2rem 1.25rem}\n"
+            "h1{font-size:1.6rem;margin:0}\n"
+            "h1 span{color:#7BD88F}\n"
+            ".meta{color:#9da7b3;font-size:.85rem;margin:.35rem 0 1.5rem}\n"
+            "code{background:#161b22;border:1px solid #232a33;border-radius:4px;padding:.1em .4em}\n"
+            ".cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.75rem;margin-bottom:1.5rem}\n"
+            ".card{background:#161b22;border:1px solid #232a33;border-radius:8px;padding:.75rem .9rem;margin:0}\n"
+            "figcaption{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.4rem}\n"
+            ".metric{text-transform:uppercase;letter-spacing:.08em;font-size:.75rem;color:#9da7b3}\n"
+            ".cur{font-size:1.15rem;font-weight:700}\n"
+            ".delta{margin-left:auto;font-size:.75rem;color:#9da7b3}\n"
+            ".bars{width:100%;height:auto;display:block}\n"
+            ".baseline{stroke:#232a33;stroke-width:1}\n"
+            "table{width:100%;border-collapse:collapse;font-size:.82rem}\n"
+            "th,td{padding:.35rem .5rem;border-bottom:1px solid #232a33;text-align:right}\n"
+            "th:first-child,td:first-child{text-align:left}\n"
+            "tbody tr:nth-child(even){background:#10151d}\n"
+            ".na{color:#5c6673}\n"
+            ".empty{border:1px dashed #232a33;border-radius:8px;padding:1rem;color:#9da7b3;margin-bottom:1.5rem}\n"
+            "footer{color:#5c6673;font-size:.75rem;margin-top:1.5rem}\n";
+    page += "</style>\n</head>\n<body>\n<main>\n<header>\n<h1>Plusafetch <span>report</span></h1>\n";
+    page += "<p class=\"meta\">Generated ";
+    page += htmlEscape(generated);
+    page += " · ";
+    page += std::to_string(samples.size());
+    page += samples.size() == 1 ? " sample" : " samples";
+    page += " (last 30 max) · source <code>";
+    page += htmlEscape(logPath);
+    page += "</code></p>\n</header>\n";
+
+    if (samples.empty()) {
+        page += "<div class=\"empty\">No samples yet — run <code>plusafetch --report</code> to record some.</div>\n";
+        std::fprintf(stderr, "%s: warning: no samples in %s (run plusafetch --report first)\n", kName, logPath.c_str());
+    }
+
+    page += "<section class=\"cards\">\n";
+    page += renderTrendCard(TrendChart{"mem", mem, 100.0, 0, "%", "#7BD88F"});
+    page += renderTrendCard(TrendChart{"swap", swap, 100.0, 0, "%", "#7DBBFF"});
+    page += renderTrendCard(TrendChart{"disk", disk, 100.0, 0, "%", "#FABD2F"});
+    page += renderTrendCard(TrendChart{"load", load, -1.0, 1, "", "#BD93F9"});
+    if (!battery.empty()) page += renderTrendCard(TrendChart{"battery", battery, 100.0, 0, "%", "#38B2AC"});
+    if (!temp.empty()) page += renderTrendCard(TrendChart{"temp", temp, -1.0, 1, "°C", "#F6AD55"});
+    page += "</section>\n";
+
+    page += "<section>\n<table>\n<thead><tr><th>Time</th><th>Mem</th><th>Swap</th><th>Disk</th><th>Load</th><th>Batt</th><th>Temp</th></tr></thead>\n<tbody>\n";
+    for (const auto& sample : samples) {
+        char buf[32];
+        page += "<tr><td>" + htmlEscape(formatEpochLocal(sample.timestamp)) + "</td>";
+        page += tableCellPercent(sample.mem);
+        page += tableCellPercent(sample.swap);
+        page += tableCellPercent(sample.disk);
+        if (sample.load >= 0.0) {
+            std::snprintf(buf, sizeof buf, "<td>%.1f</td>", sample.load);
+            page += buf;
+        } else page += "<td class=\"na\">—</td>";
+        page += tableCellPercent(sample.battery);
+        if (sample.temp >= -50.0) {
+            std::snprintf(buf, sizeof buf, "<td>%.1f°C</td>", sample.temp);
+            page += buf;
+        } else page += "<td class=\"na\">—</td>";
+        page += "</tr>\n";
+    }
+    if (samples.empty()) page += "<tr><td colspan=\"7\" class=\"na\">No data</td></tr>\n";
+    page += "</tbody>\n</table>\n</section>\n";
+    page += "<footer>plusafetch ";
+    page += htmlEscape(kVersion);
+    page += " · offline, no external assets · mem/swap/disk/battery are percent of capacity</footer>\n";
+    page += "</main>\n</body>\n</html>\n";
+    return writeConfigAtomic(htmlPath, page);
+}
+
+static bool emitHtmlReport(const std::string& logPath, const std::string& htmlPath) {
+    if (!writeHtmlReport(logPath, htmlPath)) {
+        std::fprintf(stderr, "%s: could not write HTML report to %s\n", kName, htmlPath.c_str());
+        return false;
+    }
+    std::printf("html  %s\n", htmlPath.c_str());
+    return true;
+}
+
 int run(int argc, char** argv) {
     bool wantJson = false, wantNotify = false, wantAll = false, wantGenConfig = false, wantHelp = false, wantVersion = false, wantList = false, wantValuesOnly = false, wantVerify = false, wantDoctor = false, wantStatusline = false, wantReport = false, wantMoo = false;
     std::string reportPath;
     bool reportFileSet = false;
     bool formatSet = false;
+    bool wantHtmlReport = false, htmlReportSet = false;
+    std::string htmlReportPath;
     std::string formatText;
     std::string modulesCsv;
     bool wantListThemes = false;
@@ -610,6 +854,14 @@ int run(int argc, char** argv) {
         else if (a == "--doctor") wantDoctor = true;
         else if (a == "--statusline") wantStatusline = true;
         else if (a == "--report") wantReport = true;
+        else if (a == "--html-report") {
+            wantHtmlReport = true;
+            if (i + 1 < argc) {
+                std::string_view next{argv[i + 1]};
+                if (!next.empty() && next.front() != '-') { htmlReportPath = std::string{argv[++i]}; htmlReportSet = true; }
+            }
+        }
+        else if (a.rfind("--html-report=", 0) == 0) { wantHtmlReport = true; htmlReportPath = std::string{a.substr(14)}; htmlReportSet = true; }
         else if (a == "--report-file" && i + 1 < argc) { reportPath = std::string{argv[++i]}; reportFileSet = true; }
         else if (a.rfind("--report-file=", 0) == 0) { reportPath = std::string{a.substr(14)}; reportFileSet = true; }
         else if (a == "--gen-config") wantGenConfig = true;
@@ -640,23 +892,40 @@ int run(int argc, char** argv) {
         std::fprintf(stderr, "%s: --watch cannot be combined with --report\n", kName);
         return 64;
     }
+    if (watchSeconds > 0 && wantHtmlReport) {
+        std::fprintf(stderr, "%s: --watch cannot be combined with --html-report\n", kName);
+        return 64;
+    }
     if (wantReport && wantJson) {
         std::fprintf(stderr, "%s: --report cannot be combined with --json\n", kName);
+        return 64;
+    }
+    if (wantHtmlReport && wantJson) {
+        std::fprintf(stderr, "%s: --html-report cannot be combined with --json\n", kName);
         return 64;
     }
     if (wantReport && wantStatusline) {
         std::fprintf(stderr, "%s: --report already prints a compact report\n", kName);
         return 64;
     }
-    if (reportFileSet && !wantReport) {
-        std::fprintf(stderr, "%s: --report-file requires --report\n", kName);
+    if (wantHtmlReport && wantStatusline) {
+        std::fprintf(stderr, "%s: --html-report cannot be combined with --statusline\n", kName);
+        return 64;
+    }
+    if (reportFileSet && !wantReport && !wantHtmlReport) {
+        std::fprintf(stderr, "%s: --report-file requires --report or --html-report\n", kName);
         return 64;
     }
     if (reportFileSet && reportPath.empty()) {
         std::fprintf(stderr, "%s: --report-file needs a path\n", kName);
         return 64;
     }
-    if (wantReport && reportPath.empty()) reportPath = reportDefaultPath();
+    if (htmlReportSet && htmlReportPath.empty()) {
+        std::fprintf(stderr, "%s: --html-report needs a path\n", kName);
+        return 64;
+    }
+    if ((wantReport || wantHtmlReport) && reportPath.empty()) reportPath = reportDefaultPath();
+    if (wantHtmlReport && htmlReportPath.empty()) htmlReportPath = reportHtmlDefaultPath();
     if (wantVersion) { std::printf("plusafetch %s\n", kVersion); return 0; }
     if (wantHelp) { printUsage(stdout); return 0; }
     if (wantMoo) {
@@ -676,6 +945,8 @@ int run(int argc, char** argv) {
         return 0;
     }
     if (wantDoctor) return printDoctor();
+    // --html-report alone is a pure render of the log: no module detection needed.
+    if (wantHtmlReport && !wantReport) return emitHtmlReport(reportPath, htmlReportPath) ? 0 : 74;
     if (!themeName.empty() && !findTheme(themeName)) {
         std::fprintf(stderr, "%s: unknown theme '%s' (try --list-themes)\n", kName, themeName.c_str());
         return 2;
@@ -975,8 +1246,13 @@ int run(int argc, char** argv) {
                 return 74;
             }
             printReport(reportPath);
+        }
+        if (wantHtmlReport) {
+            // Reached only when combined with --report (bare --html-report returned earlier).
+            if (!emitHtmlReport(reportPath, htmlReportPath)) return 74;
             return 0;
         }
+        if (wantReport) return 0;
 
         if (wantStatusline) {
             const double mem = alertMetric(ctx, "mem");

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0] - 2026-11-18
+
+- Added `--html-report [FILE]`: renders the report JSONL log into a standalone, offline HTML page — title, generation timestamp, sample count (last 30 max), SVG bar trends for `mem`/`swap`/`disk`/`load` plus `battery`/`temp` when present, and a table of the last 30 samples. No external assets and no JavaScript.
+- `--html-report` is a pure render: it never appends a sample. Combine `--report --html-report` to append, print the text report and write the HTML in one run. `--report-file FILE` selects the input log; the output defaults to `$XDG_STATE_HOME/plusafetch/report.html` (or `~/.local/state/plusafetch/report.html`), or `$TMPDIR/plusafetch-report.html` when both XDG vars are absent.
+- All interpolated values are HTML-escaped; a missing or corrupt JSONL log renders an empty page with a stderr warning instead of crashing; `temp` `-999` (sensor absent) is never rendered; an existing symlink at the output path is refused; the output path is printed on success.
+- Documented the HTML report in README, `--help` and shell completions; extended `tests/report-smoke.sh`; bumped the public version to 0.6.0.
+
 ## [0.5.0] - 2026-11-17
 
 - Extended `--report` with battery percentage and battery-temperature samples when the Android battery source exposes them.

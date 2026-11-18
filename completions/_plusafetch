@@ -19,6 +19,7 @@ _plusafetch() {
         '--doctor[diagnose config, theme, color and modules]' \
         '--statusline[one compact memory/swap/disk/load line]' \
         '--report[save and print a compact trend report]' \
+        '--html-report[write a standalone offline HTML trend report]:file:_files' \
         '--report-file[use FILE for the report log]:file:_files' \
         '--gen-config[write the default config]' \
         '--notify[send a Termux notification when done]' \
