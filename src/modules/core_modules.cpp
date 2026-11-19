@@ -136,7 +136,7 @@ static void printTitleModule(void*) noexcept {
     FFContext& ctx = *g_ctx;
     std::string t = titleText(ctx);
     if (ctx.color) ffStrbufAppendS(ctx.frame.b, ctx.truecolor ? "\033[1;38;2;226;232;255m" : "\033[1;97m");
-    ffStrbufAppendS(ctx.frame.b, t.c_str());
+    ffStrbufAppendS(ctx.frame.b, sanitizeForTerminal(t).c_str()); // env/model strings are untrusted
     if (ctx.color) ffStrbufAppendS(ctx.frame.b, "\033[0m");
     ffStrbufAppendC(ctx.frame.b, '\n');
 }

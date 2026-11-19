@@ -128,10 +128,10 @@ void runDetectParallel(FFContext& ctx, const std::vector<const FFModuleBaseInfo*
 }
 
 std::string configPath() {
-    if (const char* p = std::getenv("PLUSAFETCH_CONFIG")) return p;
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME")) return std::string(xdg) + "/plusafetch/config.jsonc";
+    if (const char* p = std::getenv("PLUSAFETCH_CONFIG")) { if (*p) return p; }
+    if (const char* xdg = std::getenv("XDG_CONFIG_HOME")) { if (*xdg) return std::string(xdg) + "/plusafetch/config.jsonc"; }
     const char* home = std::getenv("HOME");
-    return std::string(home ? home : ".") + "/.config/plusafetch/config.jsonc";
+    return std::string(home && *home ? home : ".") + "/.config/plusafetch/config.jsonc";
 }
 
 nlohmann::json loadConfig() {
@@ -1187,6 +1187,13 @@ int run(int argc, char** argv) {
     if (mods.empty()) {
         std::fprintf(stderr, "%s: no valid modules selected (check names with --list-modules)\n", kName);
         return 65;
+    }
+    {
+        // keep first occurrence; detection of the same module twice races on the shared context
+        std::vector<const FFModuleBaseInfo*> deduped;
+        for (const auto* m : mods)
+            if (std::find(deduped.begin(), deduped.end(), m) == deduped.end()) deduped.push_back(m);
+        mods.swap(deduped);
     }
 
     // Alerts read their source modules out of the context; make sure those are
