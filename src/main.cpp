@@ -43,6 +43,7 @@ struct ThemePreset { const char* name; const char* key; };
 static constexpr ThemePreset kThemes[] = {
     {"greenit",          "#7BD88F"},
     {"bluney",           "#7DBBFF"},
+    {"yellen",           "#F2D14E"},
     {"catppuccin-mocha", "#89B4FA"},
     {"dracula",          "#BD93F9"},
     {"gruvbox",          "#FABD2F"},

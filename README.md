@@ -206,7 +206,7 @@ Built-in presets set the key colour without a config rewrite (inspired by the
 fastfetch theme configs and Starship palettes):
 
 ```bash
-plusafetch --list-themes     # greenit, bluney, catppuccin-mocha, dracula,
+plusafetch --list-themes     # greenit, bluney, yellen, catppuccin-mocha, dracula,
                              # gruvbox, nord, rose-pine, solarized, tokyo-night, mono
 plusafetch --theme bluney    # keys in #7DBBFF
 ```
@@ -287,7 +287,7 @@ subprocesses and has a small fixed module set.
 | Modules | 24 | 100+ |
 | Logo | none, by design | ASCII/image logo |
 | Platforms | Termux/Android, Linux, macOS | Linux, macOS, Windows, BSD… |
-| Themes | 10 built-in `--theme` presets | theme = config file |
+| Themes | 11 built-in `--theme` presets | theme = config file |
 | Default-path subprocesses | none | varies by module |
 
 fastfetch is the feature-complete choice; Plusafetch optimises for a tiny,
@@ -315,6 +315,8 @@ Tiny, dependency-free tools from the same family:
 - [Pythonator](https://github.com/Mark44928/Pythonator) — Python rewrite of Plusalator — stdlib-only, `--eval`/`--json`
 - [Solvamath](https://github.com/Mark44928/Solvamath) — terminal math puzzle game — seven puzzle types, daily seed, achievements
 - [Bluney](https://github.com/Mark44928/Bluney) — blue-injected theme family — dark + light, single palette.json
+- [Fluffless Prompt](https://github.com/Mark44928/FlufflessPrompt) — quiet Oh My Zsh theme — Git state, exit codes, clock
+- [Weatui](https://github.com/Mark44928/Weatui) — friendly Open-Meteo weather TUI — saved cities, forecasts, no API key
 - [Yellen](https://github.com/Mark44928/Yellen) — golden-yellow theme family — dark + light, single palette.json
 - [Mark44928](https://github.com/Mark44928) — profile and project index
 - [Plusalator](https://github.com/Mark44928/Plusalator) — C++17 calculator REPL — Qalculate-flavored, ghost autosuggest, 19 themes
