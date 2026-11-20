@@ -217,6 +217,7 @@ void printUsage(FILE* out) {
         "                            slices: {os~0,5}\n"
         "  plusafetch --modules a,b Comma-separated module list\n"
         "                            (default: config or built-in)\n"
+        "  plusafetch --exclude a,b   Drop modules from the selected/default layout\n"
         "  plusafetch --list-modules   List every registered module\n"
         "  plusafetch --list-themes    List built-in colour themes\n"
         "  plusafetch --theme <name>   Apply a colour theme (key colours)\n"
@@ -801,6 +802,7 @@ int run(int argc, char** argv) {
     std::string htmlReportPath;
     std::string formatText;
     std::string modulesCsv;
+    std::string excludeCsv;
     bool wantListThemes = false;
     std::string themeName;
     int colorMode = 0; // 0 auto, 1 always, -1 none
@@ -877,6 +879,8 @@ int run(int argc, char** argv) {
         else if (a.rfind("--format=", 0) == 0) { formatText = std::string(a.substr(9)); formatSet = true; }
         else if (a == "--modules" && i + 1 < argc) modulesCsv = argv[++i];
         else if (a.rfind("--modules=", 0) == 0) modulesCsv = std::string(a.substr(10));
+        else if (a == "--exclude" && i + 1 < argc) excludeCsv = argv[++i];
+        else if (a.rfind("--exclude=", 0) == 0) excludeCsv = std::string(a.substr(10));
         else { std::fprintf(stderr, "%s: unknown option '%.*s'\n", kName, (int)a.size(), a.data()); return 64; }
     }
 
@@ -1184,6 +1188,28 @@ int run(int argc, char** argv) {
         for (const char* n : kAllStructure) addName(n);
     } else {
         for (const char* n : kDefaultStructure) addName(n);
+    }
+    if (!excludeCsv.empty()) {
+        std::string_view s{excludeCsv};
+        std::size_t pos = 0;
+        while (pos < s.size()) {
+            std::size_t comma = s.find(',', pos);
+            std::string_view tok = s.substr(pos, comma == std::string_view::npos ? s.size() - pos : comma - pos);
+            while (!tok.empty() && (tok.front() == ' ' || tok.front() == '\t')) tok.remove_prefix(1);
+            while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t')) tok.remove_suffix(1);
+            if (!tok.empty()) {
+                if (findModule(tok)) {
+                    mods.erase(std::remove_if(mods.begin(), mods.end(),
+                        [&](const FFModuleBaseInfo* m) { return std::string_view{m->name} == tok; }),
+                        mods.end());
+                } else {
+                    std::fprintf(stderr, "%s: warning: unknown module '%.*s' in --exclude (ignored)\n",
+                                 kName, (int)tok.size(), tok.data());
+                }
+            }
+            if (comma == std::string_view::npos) break;
+            pos = comma + 1;
+        }
     }
     if (mods.empty()) {
         std::fprintf(stderr, "%s: no valid modules selected (check names with --list-modules)\n", kName);

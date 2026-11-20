@@ -74,6 +74,7 @@ plusafetch
 | `plusafetch --check-alerts` | one-shot check; exit 0 when clear, 1 on a hit (cron-friendly) |
 | `plusafetch --format '{os}\n{cpu}\n{memory}'` | template; placeholders `{name}`, slices `{os~0,5}` |
 | `plusafetch --modules os,cpu,battery` | comma-separated module list |
+| `plusafetch --exclude disk,packages` | drop modules from the selected/default layout |
 | `plusafetch --values-only` | print values only (no key column) |
 | `plusafetch --verify-config` | validate config.jsonc (exit 0 OK / 65 invalid) |
 | `plusafetch --doctor` | report config validity, theme, color mode, module counts, termux-api and TMPDIR |

@@ -54,6 +54,7 @@ check: $(BIN)
 	./$(BIN) --doctor
 	./$(BIN) --statusline
 	@bash tests/alerts-smoke.sh
+	@bash tests/modules-smoke.sh
 	@bash tests/report-smoke.sh
 
 # Validate every shipped ricer skin against the real config parser.
