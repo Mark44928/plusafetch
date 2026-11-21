@@ -271,7 +271,7 @@ Same device and shell, 20 runs after one warm-up, stdout discarded
 | Run | median | min |
 |---|---:|---:|
 | `plusafetch` (default layout) | **23.5 ms** | 20.0 ms |
-| `fastfetch --pipe` (this device's user config) | 716.3 ms | 625.8 ms |
+| `fastfetch --pipe` (android12-fastfetch) | 716.3 ms | 625.8 ms |
 | `fastfetch -c none --pipe` (pure defaults, no user config) | 461.1 ms | 403.6 ms |
 | `fastfetch -c none --pipe --logo none --structure title:os:kernel:host:cpu:memory:disk:uptime:packages:shell:terminal:datetime` | 346.4 ms | 277.5 ms |
 

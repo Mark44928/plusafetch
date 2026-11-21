@@ -133,18 +133,20 @@ void detectSensorsAndroid(FFContext& ctx) {
             const auto& vs = j[w.want]["values"];
             if (!vs.is_array() || vs.empty()) continue;
             if (!out.empty()) out += "  ";
-            out += w.label;
-            out += ": ";
+            std::string seg;
             bool first = true;
             for (const auto& v : vs) {
-                if (!first) out += ", ";
+                if (!v.is_number()) continue;
+                if (!first) seg += ", ";
                 first = false;
-                if (v.is_number()) {
-                    char nb[32];
-                    std::snprintf(nb, sizeof nb, "%.2f", v.get<double>());
-                    out += nb;
-                }
+                char nb[32];
+                std::snprintf(nb, sizeof nb, "%.2f", v.get<double>());
+                seg += nb;
             }
+            if (seg.empty()) continue;
+            out += w.label;
+            out += ": ";
+            out += seg;
             ++shown;
         } catch (...) {}
     }
