@@ -364,7 +364,9 @@ def main():
     if args.fallback:
         fb_args.append(args.fallback)
     else:
-        for cand in ("/data/data/com.termux/files/usr/share/fonts/TTF/DejaVuSansMono.ttf",):
+        for cand in ("/data/data/com.termux/files/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+                     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                     "/usr/share/fonts/dejavu/DejaVuSansMono.ttf"):
             if file_exists(cand):
                 fb_args.append(cand)
     fs_ = FontSet(fb_args, args.size)
