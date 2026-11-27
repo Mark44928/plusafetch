@@ -342,4 +342,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY
 
 ---
 
+<div align="center">
+<img width="100%" src="https://api.star-history.com/svg?repos=Mark44928/Plusafetch&amp;type=Date" alt="Star history" />
+</div>
+
+---
+
 **More projects:** [Mark44928's hub](https://mark44928.github.io/Mark44928/) — a family of dependency-free tools for Termux, Linux, and the terminal.
